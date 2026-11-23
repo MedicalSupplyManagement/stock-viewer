@@ -64,6 +64,29 @@ label{display:block;font-size:12px;color:var(--mut);margin:12px 0 4px}
 .more{width:100%;margin:4px 0 10px}
 .hint{font-size:12px;color:var(--mut);margin-top:8px;line-height:1.5}
 hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.btn-o{background:#fff;color:var(--pri);border:1px solid var(--pri);padding:6px 12px;font-size:13px;margin-top:8px}
+#ov{position:fixed;inset:0;z-index:20;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch}
+#ov[hidden]{display:none}
+.ovh{position:sticky;top:0;z-index:2;background:var(--pri);color:#fff;display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px}
+.ovh .btn{padding:7px 12px}
+.ovh .t{font-weight:700;font-size:15px;line-height:1.3;min-width:0}
+.ovb{padding:10px 12px calc(env(safe-area-inset-bottom) + 28px);max-width:760px;margin:0 auto}
+.kv{display:flex;gap:8px;padding:4px 0;font-size:13.5px}
+.kv .k{flex:0 0 104px;font-size:12px;color:var(--mut)}
+.kv .v{flex:1;min-width:0;font-weight:600;word-break:break-word}
+.h2{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700;font-size:14.5px;margin-bottom:8px}
+.seg{display:inline-flex;border:1px solid var(--pri);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:#fff;color:var(--pri);padding:5px 11px;font-size:12.5px;font-weight:700;font-family:inherit}
+.seg button.on{background:var(--pri);color:#fff}
+.dr{display:flex;gap:6px;padding:5px 0;font-size:13px;border-top:1px solid var(--line)}
+.dr:first-of-type{border-top:0}
+.dr>div:nth-child(1){flex:4}.dr>div:nth-child(2),.dr>div:nth-child(3){flex:3;text-align:right}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.dt{border-collapse:collapse;font-size:12.5px;white-space:nowrap}
+table.dt th,table.dt td{padding:6px 9px;text-align:right;border-bottom:1px solid var(--line)}
+table.dt th:first-child,table.dt td:first-child{text-align:left;position:sticky;left:0;background:#fff}
+table.dt th{font-size:12px;background:#f8fafc}
+table.dt tr.tot td{font-weight:700;background:#f8fafc}
 </style>
 </head>
 <body>
@@ -83,6 +106,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   <section id="t-po" hidden></section>
   <section id="t-set" hidden></section>
 </main>
+<div id="ov" hidden></div>
 
 <script>
 "use strict";
@@ -246,7 +270,8 @@ function renderLots(){
        '<span class="pill '+cls+'">เปิดรหัส = '+esc(st||"—")+'</span>'+
        '<div class="row"><div style="flex:3"><div class="lb">คงเหลือรวม</div><div class="big">'+esc(pk.main)+'</div>'+(pk.sub?'<div class="meta">'+esc(pk.sub)+'</div>':'')+'</div>'+
        '<div style="flex:2"><div class="lb">ล็อตใกล้หมดอายุ</div><div class="val">'+esc(fmtDate(d.nearest))+'</div></div></div>'+
-       '<div class="exp '+rem.level+'">'+esc(rem.text)+'</div>';
+       '<div class="exp '+rem.level+'">'+esc(rem.text)+'</div>'+
+       (hasInfo(d.itemId)?'<button class="btn btn-o" data-info="'+d.itemId+'">ข้อมูลยา</button>':'');
     if(d.lots.length){
       h+='<details><summary>แยกดูล็อต ('+d.lotCount+')</summary>';
       d.lots.forEach(function(l){
@@ -264,6 +289,7 @@ function renderLots(){
   el.innerHTML=h;
   var q=$("q-lots"); q.oninput=function(){ view.lots.term=q.value.trim(); view.lots.limit=60; var pos=q.selectionStart; renderLots(); var n=$("q-lots"); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
   var m=$("more-lots"); if(m) m.onclick=function(){ view.lots.limit+=60; renderLots(); };
+  Array.prototype.forEach.call(el.querySelectorAll("button[data-info]"),function(b){ b.onclick=function(){ openInfo(+b.getAttribute("data-info")); }; });
 }
 
 function renderPo(){
@@ -299,6 +325,89 @@ function renderPo(){
   var m=$("more-po"); if(m) m.onclick=function(){ view.po.limit+=60; renderPo(); };
 }
 
+/* ===================== ข้อมูลยา (info / เบิก 4 เดือน / ยอดจ่าย 12 เดือน) ===================== */
+var DEPS=[[47,"OPD ชั้น 1"],[48,"OPD ชั้น 2"],[51,"OPD วิจัย"],[40,"ตึกหัวใจ"],[36,"IPD 8 ชั้น"],[11,"สาขา 1"],[13,"สาขา 3"],[205,"เคมีบำบัด"]];
+var MONTHS=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+var infoMap={}, drawMap={}, dispMap={}, inBoxes=false, openId=null;
+function buildIndex(s){
+  infoMap={}; drawMap={}; dispMap={};
+  (s.info||[]).forEach(function(i){ infoMap[num(i.item_id)]=i; });
+  (s.draws||[]).forEach(function(r){ var k=num(r.item_id); (drawMap[k]=drawMap[k]||[]).push(r); });
+  (s.disp||[]).forEach(function(a){ var k=String(a[0]); (dispMap[k]=dispMap[k]||[]).push(a); });
+}
+function hasInfo(id){ return !snap || !(snap.info&&snap.info.length) || !!infoMap[id]; }   // ชุดข้อมูลเก่าที่ยังไม่มี info: แสดงปุ่มไว้ก่อน
+function cleanDate(s){ var v=str(s); if(!v||v.length<4) return null; return (+v.slice(0,4)<1900)?null:v; }
+function dashN(v){ var s=str(v); return (s==null||s==="-")?null:s; }
+function kv(k,v){ return '<div class="kv"><div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div></div>'; }
+function drugById(id){ for(var i=0;i<drugs.length;i++) if(drugs[i].itemId===id) return drugs[i]; return null; }
+
+function renderInfo(){
+  var d=drugById(openId); if(!d) return;
+  var info=infoMap[openId]||null;
+  var pack=(info && num(info.unit_qty)>0)?num(info.unit_qty):0;
+  var packName=(info&&str(info.pack_name))||"แพ็ค";
+  var unitName=d.unit||(info&&str(info.unit))||"หน่วย";
+  var h='<div class="ovh"><button class="btn btn-w" id="ov-back">‹ กลับ</button><div class="t">'+esc(d.itemName)+'</div></div><div class="ovb">';
+
+  // 1) ข้อมูลทั่วไป
+  h+='<div class="card"><div class="h2">ข้อมูลทั่วไป</div>';
+  if(!info){ h+='<div class="hint">ยังไม่มีข้อมูลทั่วไปของยานี้ในสำเนา — ให้ผู้ดูแลอัปเดตจาก DB คลังแล้วส่งขึ้นคลาวด์ใหม่</div>'; }
+  else{
+    var codes=(info.icodes||[]).map(String);
+    var po=cleanDate(info.po_date);
+    h+=kv("ชื่อสามัญ",str(info.common_name)||d.itemName)+kv("รหัส item",String(openId))+
+       kv("รหัส HOSxP",codes.length?codes.join(", "):"— (ไม่พบการจับคู่)")+
+       kv("หน่วยจ่าย",str(info.unit)||d.unit||"—")+
+       kv("ขนาดบรรจุ",pack>0?(fmtNum(pack)+" "+unitName+" ["+packName+"]"):"—")+
+       kv("ราคาซื้อล่าสุด",info.po_price==null?"—":(fmtNum(num(info.po_price),2)+" บาท"+(pack>0?(" / "+packName):"")))+
+       kv("วันที่ซื้อล่าสุด",po?fmtDate(po):"—")+
+       kv("ผู้จำหน่าย",str(info.supplier_name)||str(info.vendor_name)||"—")+
+       kv("ชื่อการค้า",dashN(info.trade_name)||"—")+kv("GPUID",dashN(info.gpu_code)||"—")+kv("TPU",dashN(info.tpu_code)||"—");
+  }
+  h+='</div>';
+
+  // 2) เบิกจากคลัง 4 เดือน
+  var dr=(drawMap[openId]||[]).slice().sort(function(a,b){ return (num(b.y)*100+num(b.m))-(num(a.y)*100+num(a.m)); });
+  h+='<div class="card"><div class="h2">เบิกจากคลัง ย้อนหลัง 4 เดือน</div>';
+  if(!dr.length) h+='<div class="hint">ไม่มีรายการเบิกใน 4 เดือนที่ผ่านมา (หรือยังไม่มีข้อมูลในสำเนา)</div>';
+  dr.forEach(function(r){
+    var q=num(r.qty), t=pack>0?(fmtNum(q/pack,1)+" "+packName):(fmtNum(q,0)+" "+unitName);
+    h+='<div class="dr"><div>'+esc((MONTHS[num(r.m)-1]||r.m)+" "+r.y)+'</div><div><b>'+esc(t)+'</b></div><div>'+esc(fmtNum(num(r.price),2))+' บาท</div></div>';
+  });
+  h+='</div>';
+
+  // 3) ยอดจ่ายผู้ป่วยรายเดือน
+  var rows=[]; ((info&&info.icodes)||[]).forEach(function(c){ rows=rows.concat(dispMap[String(c)]||[]); });
+  var mm={}; rows.forEach(function(a){ var k=num(a[1])*100+num(a[2]); var o=mm[k]||(mm[k]={y:num(a[1]),m:num(a[2]),by:{},tot:0}); var dp=num(a[3]),q=num(a[4]); o.by[dp]=(o.by[dp]||0)+q; o.tot+=q; });
+  var ms=Object.keys(mm).map(function(k){return mm[k];}).sort(function(a,b){ return (b.y*100+b.m)-(a.y*100+a.m); });
+  var deps=DEPS.filter(function(e){ return ms.some(function(m){ return (m.by[e[0]]||0)!==0; }); });
+  var dtot={}, grand=0; deps.forEach(function(e){ dtot[e[0]]=ms.reduce(function(s,m){return s+(m.by[e[0]]||0);},0); }); ms.forEach(function(m){ grand+=m.tot; });
+  function qt(v){ return (pack>0&&inBoxes)?fmtNum(v/pack,1):fmtNum(v,0); }
+  h+='<div class="card"><div class="h2"><span>ยอดจ่ายผู้ป่วยรายเดือน แยกคลัง</span>'+
+     (pack>0?'<span class="seg"><button data-u="0" class="'+(inBoxes?'':'on')+'">'+esc(unitName)+'</button><button data-u="1" class="'+(inBoxes?'on':'')+'">'+esc(packName)+'</button></span>':'')+'</div>'+
+     '<div class="meta" style="margin-bottom:6px">'+(snap.disp_fetched_at?('ข้อมูล ณ '+esc(fmtDT(snap.disp_fetched_at))+' · 12 เดือนล่าสุด (นับเป็น '+esc(unitName)+')'):'ยังไม่เคยอัปเดตยอดจ่าย')+'</div>';
+  if(!ms.length){
+    h+='<div class="hint">'+((snap.disp&&snap.disp.length)?'ไม่พบยอดจ่ายผู้ป่วยของยานี้ใน 12 เดือน (หรือยานี้ไม่มีรหัส HOSxP)':'ยังไม่มียอดจ่ายในสำเนา — ผู้ดูแลต้องอัปเดตยอดจ่าย (VPN HOSxP) ในแอปแล้วส่งขึ้นคลาวด์')+'</div>';
+  } else {
+    h+='<div class="tw"><table class="dt"><thead><tr><th>เดือน</th>'+deps.map(function(e){return '<th>'+esc(e[1])+'</th>';}).join("")+'<th>รวม</th></tr></thead><tbody>';
+    ms.forEach(function(m){ h+='<tr><td>'+esc((MONTHS[m.m-1]||m.m)+" "+m.y)+'</td>'+deps.map(function(e){return '<td>'+qt(m.by[e[0]]||0)+'</td>';}).join("")+'<td><b>'+qt(m.tot)+'</b></td></tr>'; });
+    h+='<tr class="tot"><td>รวมทั้งสิ้น ('+esc(unitName)+')</td>'+deps.map(function(e){return '<td>'+fmtNum(dtot[e[0]]||0,0)+'</td>';}).join("")+'<td>'+fmtNum(grand,0)+'</td></tr>';
+    if(pack>0) h+='<tr class="tot"><td>รวมเป็น'+esc(packName)+' (หาร '+esc(fmtNum(pack))+')</td>'+deps.map(function(e){return '<td>'+fmtNum((dtot[e[0]]||0)/pack,1)+'</td>';}).join("")+'<td>'+fmtNum(grand/pack,1)+'</td></tr>';
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  var ov=$("ov"); var top=ov.scrollTop; ov.innerHTML=h; ov.scrollTop=top;
+  $("ov-back").onclick=function(){ if(history.state&&history.state.ov) history.back(); else closeInfo(); };
+  Array.prototype.forEach.call(ov.querySelectorAll(".seg button"),function(b){ b.onclick=function(){ inBoxes=(b.getAttribute("data-u")==="1"); renderInfo(); }; });
+}
+function openInfo(id){
+  if(!drugById(id)) return;
+  openId=id; $("ov").hidden=false; document.body.style.overflow="hidden"; renderInfo(); $("ov").scrollTop=0;
+  try{ history.pushState({ov:1},""); }catch(e){}
+}
+function closeInfo(){ openId=null; $("ov").hidden=true; $("ov").innerHTML=""; document.body.style.overflow=""; }
+window.addEventListener("popstate",function(){ if(!$("ov").hidden) closeInfo(); });
+
 function renderSet(){
   var el=$("t-set");
   el.innerHTML=
@@ -317,6 +426,7 @@ function renderSet(){
    '<div class="card"><div class="nm">เกี่ยวกับข้อมูล</div><div class="hint">'+
    'ข้อมูลทั้งหมดมาจากสำเนาที่ผู้ดูแลส่งขึ้นคลาวด์ กด "อัปเดตจากคลาวด์" เพื่อดึงชุดล่าสุดมาเก็บในเครื่อง หลังจากนั้นเปิดดูได้โดยไม่ต้องมีอินเทอร์เน็ต '+
    'ถ้าอัปเดตไม่สำเร็จ ข้อมูลเดิมในเครื่องจะยังอยู่ครบ'+
+   '<br>ปุ่ม "ข้อมูลยา" ในแต่ละการ์ดแสดงข้อมูลทั่วไป ยอดเบิก 4 เดือน และยอดจ่ายผู้ป่วย 12 เดือน (ยอดจ่ายขึ้นกับว่าผู้ดูแลอัปเดตจาก HOSxP แล้วส่งขึ้นคลาวด์หรือยัง)'+
    '<br>ข้อมูลล่าสุดในเครื่อง: <b>'+(snap?esc(fmtDT(snap.fetched_at)):"ยังไม่มี")+'</b></div></div>';
   $("c-link").onclick=function(){
     if(!cfg.token){ showMsg("err","ยังไม่มีโทเคนในเครื่องนี้ วางโทเคนแล้วกดบันทึกก่อน"); return; }
@@ -333,10 +443,10 @@ function renderSet(){
 
 function showMsg(kind,text){ $("msg").innerHTML = text? '<div class="msg '+kind+'">'+esc(text)+'</div>':""; }
 function renderAsOf(){
-  $("asof").textContent = snap ? ("ข้อมูล ณ "+fmtDT(snap.fetched_at)+" · "+drugs.length+" รายการยา · "+(snap.po||[]).length+" แถว PO") : "ยังไม่มีข้อมูลในเครื่อง";
+  $("asof").textContent = snap ? ("ข้อมูล ณ "+fmtDT(snap.fetched_at)+" · "+drugs.length+" รายการยา · "+(snap.po||[]).length+" แถว PO"+(snap.disp_fetched_at?(" · ยอดจ่าย ณ "+fmtDT(snap.disp_fetched_at)):"")) : "ยังไม่มีข้อมูลในเครื่อง";
 }
 function setSnap(s){
-  snap=s; drugs=buildDrugs(s.lots||[]);
+  snap=s; drugs=buildDrugs(s.lots||[]); buildIndex(s);
   renderAsOf(); renderLots(); renderPo(); renderSet();
 }
 
