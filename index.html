@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>คงคลัง & ล็อตยา</title>
+<style>
+:root{--pri:#0f766e;--ok:#15803d;--warn:#b45309;--bad:#c0262d;--mut:#64748b;--line:#e3e8ef;--bg:#f4f6f9}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:#0f172a;font-family:-apple-system,"Sarabun","Noto Sans Thai","Segoe UI",sans-serif;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px}
+header h1{margin:0;font-size:17px;font-weight:700}
+.sub{font-size:11.5px;opacity:.9;margin-top:2px}
+.upd{margin-top:8px;display:flex;gap:8px;align-items:center}
+.btn{border:0;border-radius:10px;padding:9px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+.btn-w{background:#fff;color:var(--pri)}
+.btn-p{background:var(--pri);color:#fff}
+.btn:disabled{opacity:.55}
+nav{display:flex;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:var(--hh,84px);z-index:4}
+nav button{flex:1;border:0;background:none;padding:11px 4px;font-size:14px;font-family:inherit;font-weight:600;color:var(--mut);border-bottom:3px solid transparent}
+nav button.on{color:var(--pri);border-bottom-color:var(--pri)}
+main{padding:10px 12px calc(env(safe-area-inset-bottom) + 24px);max-width:760px;margin:0 auto}
+.msg{margin:10px 0;padding:10px 12px;border-radius:10px;font-size:13px;white-space:pre-wrap}
+.msg.err{background:#fdecec;color:#8a1c1c;border:1px solid #f3b8b8}
+.msg.info{background:#e7f5ef;color:#14532d;border:1px solid #b8e0cb}
+input[type=search],input[type=text],input[type=password]{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;background:#fff}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0}
+.chip{flex:0 0 auto;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 12px;min-width:84px}
+.chip b{display:block;font-size:16px}
+.chip span{font-size:10.5px;color:var(--mut)}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.nm{font-weight:600;font-size:15px}
+.meta{font-size:11px;color:var(--mut);margin-top:1px}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11px;margin-top:4px}
+.pill.y{border-color:#b8e0cb;color:var(--ok);background:#effaf4}
+.pill.n{border-color:#f3b8b8;color:var(--bad);background:#fdf1f1}
+.row{display:flex;gap:10px;margin-top:8px}
+.row>div{flex:1;min-width:0}
+.lb{font-size:10.5px;color:var(--mut)}
+.big{font-size:20px;font-weight:700}
+.val{font-weight:700;font-size:14px}
+.exp{margin-top:8px;border-radius:11px;padding:8px 11px;font-size:12.5px;font-weight:600;border:1px solid}
+.exp.ok{color:var(--ok);background:#15803d14;border-color:#15803d70}
+.exp.warn{color:var(--warn);background:#b4530914;border-color:#b4530970}
+.exp.bad{color:#fff;background:var(--bad);border-color:var(--bad)}
+.exp.none{color:var(--mut);background:#64748b10;border-color:#64748b50}
+details summary{cursor:pointer;font-weight:700;font-size:13px;padding:8px 2px;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸ "}
+details[open] summary::before{content:"▾ "}
+.lot{border-top:1px solid var(--line);padding:9px 4px;display:flex;justify-content:space-between;gap:8px}
+.lot .ln{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:12.5px}
+.lot .r{text-align:right}
+.rem-w{font-size:11.5px;color:var(--mut);margin-top:3px}
+.rem-w.w{font-weight:700}
+.empty{text-align:center;color:var(--mut);padding:40px 10px;white-space:pre-wrap}
+.flag{float:right;background:var(--pri);color:#fff;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700}
+.mono{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:13.5px}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 4px}
+.more{width:100%;margin:4px 0 10px}
+.hint{font-size:12px;color:var(--mut);margin-top:8px;line-height:1.5}
+hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+</style>
+</head>
+<body>
+<header id="hd">
+  <h1>คงคลัง &amp; ล็อตยา</h1>
+  <div class="sub" id="asof">ยังไม่มีข้อมูลในเครื่อง</div>
+  <div class="upd"><button class="btn btn-w" id="btnUpd">อัปเดตจากคลาวด์</button><span class="sub" id="busy"></span></div>
+</header>
+<nav id="nav">
+  <button data-t="lots" class="on">คงคลัง</button>
+  <button data-t="po">ใบสั่งซื้อ</button>
+  <button data-t="set">ตั้งค่า</button>
+</nav>
+<main>
+  <div id="msg"></div>
+  <section id="t-lots"></section>
+  <section id="t-po" hidden></section>
+  <section id="t-set" hidden></section>
+</main>
+
+<script>
+"use strict";
+/* ===================== ที่เก็บข้อมูลในเครื่อง ===================== */
+var CFG_KEY = "stockviewer.cfg.v1";
+var DEFAULT_CFG = {owner:"MedicalSupplyManagement", repo:"stock-snapshot", branch:"main", path:"data/snapshot.json", token:""};
+var cfg = loadCfg();
+var snap = null;              // {fetched_at, po[], lots[], warehouses{}}
+var drugs = [];
+var view = {lots:{term:"",limit:60}, po:{term:"",limit:60}};
+
+function loadCfg(){
+  var c = Object.assign({}, DEFAULT_CFG);
+  try{ var j = JSON.parse(localStorage.getItem(CFG_KEY)||"{}");
+    ["owner","repo","branch","path","token"].forEach(function(k){ if(typeof j[k]==="string" && j[k].trim()) c[k]=j[k].trim(); });
+  }catch(e){}
+  return c;
+}
+function saveCfg(){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} }
+
+var DB_NAME="stockviewer", STORE="kv";
+function idb(){
+  return new Promise(function(res,rej){
+    if(!window.indexedDB){ rej(new Error("no idb")); return; }
+    var r = indexedDB.open(DB_NAME,1);
+    r.onupgradeneeded = function(){ r.result.createObjectStore(STORE); };
+    r.onsuccess = function(){ res(r.result); };
+    r.onerror = function(){ rej(r.error); };
+  });
+}
+function kvGet(k){ return idb().then(function(db){ return new Promise(function(res,rej){
+  var q = db.transaction(STORE,"readonly").objectStore(STORE).get(k);
+  q.onsuccess=function(){res(q.result);}; q.onerror=function(){rej(q.error);}; }); }); }
+function kvSet(k,v){ return idb().then(function(db){ return new Promise(function(res,rej){
+  var tx = db.transaction(STORE,"readwrite"); tx.objectStore(STORE).put(v,k);
+  tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; tx.onabort=function(){rej(tx.error);}; }); }); }
+
+/* ===================== ฟังก์ชันช่วย ===================== */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+function num(v){ if(v==null) return 0; var n=Number(v); return isNaN(n)?0:n; }
+function str(v){ if(v==null) return null; var s=String(v); return s===""?null:s; }
+function fmtNum(v,dec){
+  if(v==null) return "—"; if(dec==null) dec=2;
+  var s = Number(v).toFixed(dec);
+  if(s.indexOf(".")>=0) s = s.replace(/0+$/,"").replace(/\.$/,"");
+  var neg = s[0]==="-"; if(neg) s=s.slice(1);
+  var p = s.split("."); p[0]=p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  return (neg?"-":"")+p.join(".");
+}
+function fmtDate(iso){
+  if(!iso||iso.length<10) return "—";
+  var p = iso.slice(0,10).split("-"); if(p.length!==3) return iso;
+  return p[2]+"/"+p[1]+"/"+p[0];      // ค.ศ. เหมือนแอป
+}
+function fmtDT(d){
+  var t=new Date(d); if(isNaN(t)) return "—";
+  function z(n){return (n<10?"0":"")+n;}
+  return z(t.getDate())+"/"+z(t.getMonth()+1)+"/"+t.getFullYear()+" "+z(t.getHours())+":"+z(t.getMinutes());
+}
+function parseDay(iso){
+  if(!iso||iso.length<10) return null;
+  var p=iso.slice(0,10).split("-"); var y=+p[0],m=+p[1],d=+p[2];
+  if(!y||!m||!d) return null; return Date.UTC(y,m-1,d);
+}
+function todayUTC(){ var n=new Date(); return Date.UTC(n.getFullYear(),n.getMonth(),n.getDate()); }
+function daysTo(iso){ var e=parseDay(iso); if(e==null) return null; return Math.round((e-todayUTC())/86400000); }
+function remainOf(iso){
+  var e=parseDay(iso);
+  if(e==null) return {text:"ไม่ระบุวันหมดอายุ",level:"none",days:null};
+  var days=Math.round((e-todayUTC())/86400000);
+  if(days<0) return {text:"หมดอายุแล้ว "+(-days)+" วัน",level:"bad",days:days};
+  if(days===0) return {text:"หมดอายุวันนี้",level:"bad",days:0};
+  var t=new Date(todayUTC()), x=new Date(e);
+  var y=x.getUTCFullYear()-t.getUTCFullYear(), m=x.getUTCMonth()-t.getUTCMonth(), d=x.getUTCDate()-t.getUTCDate();
+  if(d<0){ m--; d+=new Date(Date.UTC(x.getUTCFullYear(),x.getUTCMonth(),0)).getUTCDate(); }
+  if(m<0){ y--; m+=12; }
+  var parts=[]; if(y>0) parts.push(y+" ปี"); if(m>0) parts.push(m+" เดือน"); if(d>0||!parts.length) parts.push(d+" วัน");
+  return {text:"อีก "+parts.join(" ")+" ("+days+" วัน)", level: days<=90?"bad":(days<=180?"warn":"ok"), days:days};
+}
+function packText(qty,size,packUnit,unit){
+  if(!(size>1)) return {main:(fmtNum(qty)+" "+(unit||"")).trim(), sub:""};
+  var packs=Math.floor(qty/size), rem=qty-packs*size;
+  var main=fmtNum(packs,0)+" "+(packUnit||"แพ็ค"); if(rem>0) main+=" + "+fmtNum(rem);
+  return {main:main, sub:(fmtNum(qty)+" "+(unit||"")+" (× "+fmtNum(size)+")").trim()};
+}
+
+/* ===================== จัดกลุ่ม 1 ยา = 1 การ์ด ===================== */
+function buildDrugs(rows){
+  var map={}, order=[];
+  rows.forEach(function(r){
+    var id=num(r.item_id);
+    var d=map[id];
+    if(!d){ d=map[id]={itemId:id,itemName:str(r.item_name)||"",unit:str(r.unit),totalQty:0,lotCount:0,nearest:null,
+                       useStatus:null,packUnit:str(r.unit),packSize:1,lots:[]}; order.push(d); }
+    if(!d.useStatus) d.useStatus=str(r.use_status);
+    var q=num(r.qty); d.totalQty+=q;
+    if(q<=0) return;                        // ยาคงเหลือ 0: โชว์ชื่อยา ไม่นับเป็นล็อต
+    var ps=num(r.pack_size);
+    d.lots.push({lotNo:str(r.lot_no),expire:str(r.expire_date),qty:q,wh:num(r.warehouse_id),
+                 packUnit:str(r.pack_unit),packSize:ps<=0?1:ps});
+    var e=str(r.expire_date);
+    if(e && (d.nearest==null || e<d.nearest)) d.nearest=e;
+  });
+  order.forEach(function(d){
+    d.lots.sort(function(a,b){ return (a.expire||"9999-12-31")<(b.expire||"9999-12-31")?-1:((a.expire||"9999-12-31")>(b.expire||"9999-12-31")?1:0); });
+    var seen={}; d.lots.forEach(function(l){ seen[l.lotNo+"|"+l.wh]=1; }); d.lotCount=Object.keys(seen).length;
+    var big=null; d.lots.forEach(function(l){ if(l.packSize>1 && (!big||l.qty>big.qty)) big=l; });
+    if(big){ d.packUnit=big.packUnit; d.packSize=big.packSize; }
+  });
+  order.sort(function(a,b){ var x=a.nearest||"9999-12-31", y=b.nearest||"9999-12-31"; return x<y?-1:(x>y?1:0); });
+  return order;
+}
+
+/* ===================== แสดงผล ===================== */
+function whName(id){ return (snap&&snap.warehouses&&snap.warehouses[id])||("คลัง "+id); }
+function $(id){ return document.getElementById(id); }
+
+function chipsHtml(items){
+  return '<div class="chips">'+items.map(function(c){return '<div class="chip"><b>'+esc(c[1])+'</b><span>'+esc(c[0])+'</span></div>';}).join("")+'</div>';
+}
+function noData(){ return '<div class="empty">ยังไม่มีข้อมูลในเครื่อง\nกด "อัปเดตจากคลาวด์" ด้านบน</div>'; }
+
+function renderLots(){
+  var el=$("t-lots");
+  if(!snap){ el.innerHTML=noData(); return; }
+  var term=view.lots.term.toLowerCase();
+  var rows=drugs.filter(function(d){
+    if(!term) return true;
+    if(d.itemName.toLowerCase().indexOf(term)>=0 || String(d.itemId).indexOf(term)>=0) return true;
+    return d.lots.some(function(l){ return (l.lotNo||"").toLowerCase().indexOf(term)>=0; });
+  });
+  var lots=0,expired=0,soon=0;
+  rows.forEach(function(d){ lots+=d.lotCount; d.lots.forEach(function(l){ var dd=daysTo(l.expire); if(dd==null) return; if(dd<0) expired++; else if(dd<=180) soon++; }); });
+  var h='<input type="search" id="q-lots" placeholder="ค้นหาชื่อยา / รหัส / เลขล็อต" value="'+esc(view.lots.term)+'">';
+  h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["ล็อต",fmtNum(lots,0)],["หมดอายุแล้ว",fmtNum(expired,0)],["≤ 180 วัน",fmtNum(soon,0)]]);
+  if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
+  rows.slice(0,view.lots.limit).forEach(function(d){
+    var rem=remainOf(d.nearest), pk=packText(d.totalQty,d.packSize,d.packUnit,d.unit);
+    var st=d.useStatus; var cls=st==="Y"?"y":(st==="N"?"n":"");
+    h+='<div class="card"><div class="nm">'+esc(d.itemName)+'</div>'+
+       '<div class="meta">รหัส '+d.itemId+' · '+d.lotCount+' ล็อต · หน่วย '+esc(d.unit||"—")+'</div>'+
+       '<span class="pill '+cls+'">เปิดรหัส = '+esc(st||"—")+'</span>'+
+       '<div class="row"><div style="flex:3"><div class="lb">คงเหลือรวม</div><div class="big">'+esc(pk.main)+'</div>'+(pk.sub?'<div class="meta">'+esc(pk.sub)+'</div>':'')+'</div>'+
+       '<div style="flex:2"><div class="lb">ล็อตใกล้หมดอายุ</div><div class="val">'+esc(fmtDate(d.nearest))+'</div></div></div>'+
+       '<div class="exp '+rem.level+'">'+esc(rem.text)+'</div>';
+    if(d.lots.length){
+      h+='<details><summary>แยกดูล็อต ('+d.lotCount+')</summary>';
+      d.lots.forEach(function(l){
+        var r=remainOf(l.expire), p=packText(l.qty,l.packSize,l.packUnit,d.unit), w=(r.level==="bad"||r.level==="warn");
+        var col=r.level==="bad"?"var(--bad)":(r.level==="warn"?"var(--warn)":"");
+        h+='<div class="lot"><div><div class="ln">'+esc(l.lotNo||"ไม่ระบุล็อต")+'</div><div class="meta">'+esc(fmtDate(l.expire))+' · '+esc(whName(l.wh))+'</div>'+
+           '<div class="rem-w'+(w?' w':'')+'"'+(col?' style="color:'+col+'"':'')+'>'+esc(r.text)+'</div></div>'+
+           '<div class="r"><div class="val">'+esc(p.main)+'</div>'+(p.sub?'<div class="meta">'+esc(p.sub)+'</div>':'')+'</div></div>';
+      });
+      h+='</details>';
+    }
+    h+='</div>';
+  });
+  if(rows.length>view.lots.limit) h+='<button class="btn btn-p more" id="more-lots">แสดงเพิ่ม ('+(rows.length-view.lots.limit)+' รายการที่เหลือ)</button>';
+  el.innerHTML=h;
+  var q=$("q-lots"); q.oninput=function(){ view.lots.term=q.value.trim(); view.lots.limit=60; var pos=q.selectionStart; renderLots(); var n=$("q-lots"); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
+  var m=$("more-lots"); if(m) m.onclick=function(){ view.lots.limit+=60; renderLots(); };
+}
+
+function renderPo(){
+  var el=$("t-po");
+  if(!snap){ el.innerHTML=noData(); return; }
+  var term=view.po.term.toLowerCase();
+  var rows=(snap.po||[]).filter(function(r){
+    if(!term) return true;
+    return [r.stock_po_no,r.item_name,r.brand_name,r.stock_vendor_name,r.item_id].some(function(v){ return v!=null && String(v).toLowerCase().indexOf(term)>=0; });
+  });
+  var set={}, total=0, y=0;
+  rows.forEach(function(r){ set[r.stock_po_no]=1; total+=num(r.stock_po_total); if(String(r.note||"").toUpperCase()==="Y") y++; });
+  var h='<input type="search" id="q-po" placeholder="ค้นหาเลขที่ PO / ชื่อยา / ผู้ขาย" value="'+esc(view.po.term)+'">';
+  h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["เลขที่ PO",fmtNum(Object.keys(set).length,0)],["ติดธง Y",fmtNum(y,0)],["มูลค่ารวม",fmtNum(Math.round(total),0)]]);
+  if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
+  rows.slice(0,view.po.limit).forEach(function(r){
+    var isY=String(r.note||"").toUpperCase()==="Y";
+    var pq=num(r.stock_package_qty), uq=num(r.unit_qty);
+    var pack = uq>1 ? fmtNum(pq)+" × "+fmtNum(uq) : fmtNum(pq);
+    h+='<div class="card">'+(isY?'<span class="flag">Y</span>':'')+
+       '<div class="mono">'+esc(r.stock_po_no||"")+'</div><div class="meta">'+esc(fmtDate(r.po_date))+' · รหัส '+esc(r.item_id)+'</div>'+
+       '<div class="nm" style="margin-top:8px">'+esc(r.item_name||"")+'</div>'+
+       (r.brand_name && r.brand_name!==r.item_name?'<div class="meta">'+esc(r.brand_name)+'</div>':'')+
+       '<hr style="margin:10px 0">'+
+       '<div class="row" style="margin-top:0"><div><div class="lb">แพ็ค</div><div class="val">'+esc(pack)+'</div></div>'+
+       '<div><div class="lb">จำนวนรวม</div><div class="val">'+esc(fmtNum(num(r.stock_po_qty)))+'</div></div>'+
+       '<div><div class="lb">มูลค่า</div><div class="val">'+esc(fmtNum(num(r.stock_po_total)))+'</div></div></div>'+
+       '<div style="margin-top:8px"><span class="pill">'+esc(r.item_unit_name||r.unit||"—")+'</span> <span class="meta">'+esc(r.stock_vendor_name||"ไม่ระบุผู้ขาย")+'</span></div></div>';
+  });
+  if(rows.length>view.po.limit) h+='<button class="btn btn-p more" id="more-po">แสดงเพิ่ม ('+(rows.length-view.po.limit)+' รายการที่เหลือ)</button>';
+  el.innerHTML=h;
+  var q=$("q-po"); q.oninput=function(){ view.po.term=q.value.trim(); view.po.limit=60; var pos=q.selectionStart; renderPo(); var n=$("q-po"); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
+  var m=$("more-po"); if(m) m.onclick=function(){ view.po.limit+=60; renderPo(); };
+}
+
+function renderSet(){
+  var el=$("t-set");
+  el.innerHTML=
+   '<div class="card"><div class="nm">ที่เก็บข้อมูลบนคลาวด์ (GitHub)</div>'+
+   '<label>เจ้าของ (owner)</label><input type="text" id="c-owner" autocapitalize="off" autocomplete="off" value="'+esc(cfg.owner)+'">'+
+   '<label>ชื่อ repo</label><input type="text" id="c-repo" autocapitalize="off" autocomplete="off" value="'+esc(cfg.repo)+'">'+
+   '<label>branch</label><input type="text" id="c-branch" autocapitalize="off" autocomplete="off" value="'+esc(cfg.branch)+'">'+
+   '<label>path ของไฟล์ข้อมูล</label><input type="text" id="c-path" autocapitalize="off" autocomplete="off" value="'+esc(cfg.path)+'">'+
+   '<label>โทเคนอ่านอย่างเดียว (ขอจากผู้ดูแล)</label><input type="password" id="c-token" autocapitalize="off" autocomplete="off" value="'+esc(cfg.token)+'" placeholder="github_pat_...">'+
+   '<div class="hint">โทเคนจะถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ใช้อ่านไฟล์ข้อมูลอย่างเดียว</div>'+
+   '<div style="margin-top:12px"><button class="btn btn-p" id="c-save">บันทึกการตั้งค่า</button></div></div>'+
+   '<div class="card"><div class="nm">เกี่ยวกับข้อมูล</div><div class="hint">'+
+   'ข้อมูลทั้งหมดมาจากสำเนาที่ผู้ดูแลส่งขึ้นคลาวด์ กด "อัปเดตจากคลาวด์" เพื่อดึงชุดล่าสุดมาเก็บในเครื่อง หลังจากนั้นเปิดดูได้โดยไม่ต้องมีอินเทอร์เน็ต '+
+   'ถ้าอัปเดตไม่สำเร็จ ข้อมูลเดิมในเครื่องจะยังอยู่ครบ'+
+   '<br>ข้อมูลล่าสุดในเครื่อง: <b>'+(snap?esc(fmtDT(snap.fetched_at)):"ยังไม่มี")+'</b></div></div>';
+  $("c-save").onclick=function(){
+    ["owner","repo","branch","path","token"].forEach(function(k){ var v=$("c-"+k).value.trim(); cfg[k]=v||(DEFAULT_CFG[k]); if(k==="token") cfg.token=v; });
+    saveCfg(); showMsg("info","บันทึกการตั้งค่าแล้ว");
+  };
+}
+
+function showMsg(kind,text){ $("msg").innerHTML = text? '<div class="msg '+kind+'">'+esc(text)+'</div>':""; }
+function renderAsOf(){
+  $("asof").textContent = snap ? ("ข้อมูล ณ "+fmtDT(snap.fetched_at)+" · "+drugs.length+" รายการยา · "+(snap.po||[]).length+" แถว PO") : "ยังไม่มีข้อมูลในเครื่อง";
+}
+function setSnap(s){
+  snap=s; drugs=buildDrugs(s.lots||[]);
+  renderAsOf(); renderLots(); renderPo(); renderSet();
+}
+
+/* ===================== อัปเดตจากคลาวด์ ===================== */
+function b64utf8(s){ return atob(s.replace(/\s/g,"")); }
+function updateFromCloud(){
+  if(!cfg.owner||!cfg.repo||!cfg.path){ showMsg("err","ยังไม่ได้ตั้งค่าคลาวด์ (แท็บ ตั้งค่า)"); return; }
+  var btn=$("btnUpd"); btn.disabled=true; $("busy").textContent="กำลังดึงข้อมูล…"; showMsg("","");
+  var path=cfg.path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  var url="https://api.github.com/repos/"+encodeURIComponent(cfg.owner)+"/"+encodeURIComponent(cfg.repo)+"/contents/"+path+"?ref="+encodeURIComponent(cfg.branch||"main");
+  var headers={"Accept":"application/vnd.github.raw+json","X-GitHub-Api-Version":"2022-11-28"};
+  if(cfg.token) headers["Authorization"]="Bearer "+cfg.token;
+  fetch(url,{headers:headers,cache:"no-store"}).then(function(r){
+    if(r.status===401||r.status===403) throw new Error("เข้าถึงไม่ได้ (รหัส "+r.status+") ตรวจโทเคนว่าถูกต้องและยังไม่หมดอายุ");
+    if(r.status===404) throw new Error("ไม่พบไฟล์ข้อมูลบนคลาวด์ (404) ตรวจ owner/repo/path หรือผู้ดูแลยังไม่ได้ส่งข้อมูลขึ้น หรือโทเคนไม่มีสิทธิ์ repo นี้");
+    if(!r.ok) throw new Error("คลาวด์ตอบกลับผิดปกติ (รหัส "+r.status+")");
+    return r.text();
+  }).then(function(txt){
+    var j; try{ j=JSON.parse(txt); }catch(e){ throw new Error("ไฟล์บนคลาวด์ไม่ใช่ข้อมูลที่แอปอ่านได้"); }
+    if(j && j.encoding==="base64" && j.content){ try{ j=JSON.parse(decodeURIComponent(escape(b64utf8(j.content)))); }catch(e){ throw new Error("ถอดรหัสไฟล์ไม่สำเร็จ"); } }
+    if(!j || !Array.isArray(j.lots) || !Array.isArray(j.po) || !j.fetched_at) throw new Error("รูปแบบข้อมูลไม่ถูกต้อง (ไม่มี lots / po / fetched_at)");
+    return kvSet("snapshot",j).then(function(){ return j; },function(){ return j; });   // เก็บไม่ได้ก็ยังแสดงได้
+  }).then(function(j){
+    setSnap(j); showMsg("info","อัปเดตจากคลาวด์แล้ว · ข้อมูล ณ "+fmtDT(j.fetched_at));
+  }).catch(function(e){
+    var m=(e&&e.message)||String(e);
+    if(/Failed to fetch|NetworkError|Load failed/i.test(m)) m="เชื่อมต่อคลาวด์ไม่ได้ (ไม่มีอินเทอร์เน็ต หรือเบราว์เซอร์/ที่โฮสต์หน้านี้บล็อกการเชื่อมต่อ)";
+    showMsg("err","อัปเดตไม่สำเร็จ: "+m+(snap?"\nข้อมูลเดิมในเครื่องยังอยู่ครบ":""));
+  }).then(function(){ btn.disabled=false; $("busy").textContent=""; });
+}
+
+/* ===================== แท็บ / เริ่มต้น ===================== */
+function showTab(t){
+  ["lots","po","set"].forEach(function(k){ $("t-"+k).hidden = (k!==t); });
+  Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){ b.classList.toggle("on", b.getAttribute("data-t")===t); });
+  window.scrollTo(0,0);
+}
+Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){ b.onclick=function(){ showTab(b.getAttribute("data-t")); }; });
+$("btnUpd").onclick=updateFromCloud;
+function fixHeader(){ document.documentElement.style.setProperty("--hh",$("hd").offsetHeight+"px"); }
+window.addEventListener("resize",fixHeader);
+
+renderLots(); renderPo(); renderSet(); fixHeader();
+kvGet("snapshot").then(function(j){ if(j && Array.isArray(j.lots)){ setSnap(j); fixHeader(); } }).catch(function(){});
+</script>
+</body>
+</html>
