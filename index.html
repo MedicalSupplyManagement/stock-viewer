@@ -48,6 +48,11 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display
 .dc .nm{font-weight:700;font-size:15.5px;color:#0b3c49}
 .dc .big{font-size:21px;font-weight:800;color:#0b3c49}
 .dc.ok{--ac:var(--ok)}.dc.warn{--ac:var(--warn)}.dc.bad{--ac:var(--bad)}.dc.none{--ac:#64748b}.dc.po{--ac:#2563a8}
+.gd h3{margin:0 0 6px;font-size:15px;color:var(--pri)}
+.gd ol,.gd ul{margin:6px 0 0;padding-left:20px;font-size:13.5px;line-height:1.65}
+.gd p{margin:6px 0 0;font-size:13.5px;line-height:1.65}
+.gd .dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.gd .tip{margin-top:8px;background:#e7f5ef;border:1px solid #b8e0cb;color:#14532d;border-radius:10px;padding:8px 11px;font-size:12.5px;line-height:1.55}
 .nm{font-weight:600;font-size:15px}
 .meta{font-size:11px;color:var(--mut);margin-top:1px}
 .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11px;margin-top:4px}
@@ -102,6 +107,24 @@ table.dt th,table.dt td{padding:6px 9px;text-align:right;border-bottom:1px solid
 table.dt th:first-child,table.dt td:first-child{text-align:left;position:sticky;left:0;background:#fff}
 table.dt th{font-size:12px;background:#f8fafc}
 table.dt tr.tot td{font-weight:700;background:#f8fafc}
+.fld{display:block;width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:14px;font-weight:600;font-family:inherit;background:#fff;color:#0b3c49}
+.frow{display:flex;gap:8px;margin-top:8px}
+.frow>div{flex:1;min-width:0}
+.frow label{margin:0 0 3px 2px;font-size:11px}
+.frow+.frow{margin-top:6px}
+.leg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:10.5px;color:var(--mut)}
+.leg i{font-style:normal;color:#222;border-radius:6px;padding:1px 7px}
+.mo0{background:#bde8cc}.mo1{background:#fff1a8}.mo2{background:#ffd6a5}.mo3{background:#e1e4e8}
+.mono.mo{display:inline-block;border-radius:6px;padding:2px 8px;color:#0b3c49}
+.grp{font-weight:800;font-size:14px;color:#0b3c49;margin:14px 2px 6px}
+.grp.sub{font-size:13px;color:var(--pri);margin:8px 2px 6px}
+.dc.pend{--ac:var(--warn)}
+.dc .bad{color:var(--bad)}
+.dep{max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;background:#fff;padding:4px 10px;margin-top:6px}
+.dep label{display:flex;align-items:center;gap:8px;margin:0;padding:7px 0;font-size:13.5px;color:#0b3c49}
+.dep input{width:auto}
+.pk{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:11px;color:var(--mut)}
+.pk .pill{margin-top:0}
 </style>
 </head>
 <body>
@@ -113,12 +136,16 @@ table.dt tr.tot td{font-weight:700;background:#f8fafc}
 <nav id="nav">
   <button data-t="lots" class="on">คงคลัง</button>
   <button data-t="po">ใบสั่งซื้อ</button>
+  <button data-t="pend">ค้างจ่ายยา</button>
+  <button data-t="help">วิธีใช้</button>
   <button data-t="set">ตั้งค่า</button>
 </nav>
 <main>
   <div id="msg"></div>
   <section id="t-lots"></section>
   <section id="t-po" hidden></section>
+  <section id="t-pend" hidden></section>
+  <section id="t-help" hidden></section>
   <section id="t-set" hidden></section>
 </main>
 <div id="ov" hidden></div>
@@ -134,7 +161,8 @@ var snap = null;              // {fetched_at, po[], lots[], warehouses{}}
 var drugs = [], drugsNoExp = null;
 var localMeta = null;         // {sha,date} ของชุดข้อมูลบนคลาวด์ที่ดึงมาเก็บไว้ในเครื่อง
 var cloudHead = null;         // {sha,date} ชุดล่าสุดบนคลาวด์ (ตรวจล่าสุด) หรือ {none:true} / {error:true}
-var view = {lots:{term:"",limit:60,showExpired:true,showInactive:false}, po:{term:"",limit:60}};
+var view = {lots:{term:"",limit:60,showExpired:true,showInactive:false,sort:"name"}, po:{term:"",limit:60,sort:"poNo",type:"1"},
+            pend:{term:"",limit:60,from:null,to:null,wh:0,deps:[]}};
 
 function loadCfg(){
   var c = Object.assign({}, DEFAULT_CFG);
@@ -288,6 +316,35 @@ function bindSearch(id,st,rerender){
   var c=$("clr-"+id); if(c) c.onclick=function(){ searchChange("",st,rerender); };
 }
 
+function selHtml(id,label,opts,val){
+  return '<label for="'+id+'">'+esc(label)+'</label><select class="fld" id="'+id+'">'+opts.map(function(o){
+    return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(val)?' selected':'')+'>'+esc(o[1])+'</option>'; }).join("")+'</select>';
+}
+function thCmp(a,b){ return String(a).localeCompare(String(b),"th"); }
+var LOT_SORTS=[["name","ชื่อยา (ก-ฮ / A-Z)"],["expDesc","วันหมดอายุ มาก → น้อย"],["expAsc","วันหมดอายุ น้อย → มาก"],
+               ["priceDesc","ราคาซื้อล่าสุด มาก → น้อย"],["priceAsc","ราคาซื้อล่าสุด น้อย → มาก"]];
+function lotPrice(d){ var i=infoMap[d.itemId]; return (i&&i.po_price!=null)?num(i.po_price):null; }
+function sortDrugs(rows,mode){
+  var idx=new Map(); rows.forEach(function(d,i){ idx.set(d,i); });
+  var nul=function(x,y){ return (x==null?1:0)-(y==null?1:0); };   // ไม่มีค่า อยู่ท้ายเสมอ
+  var out=rows.slice();
+  out.sort(function(a,b){
+    var c=0;
+    if(mode==="name") c=thCmp(a.itemName,b.itemName);
+    else if(mode==="expDesc"||mode==="expAsc"){
+      if(a.nearest==null||b.nearest==null) c=nul(a.nearest,b.nearest);
+      else c=(mode==="expDesc"?-1:1)*(a.nearest<b.nearest?-1:(a.nearest>b.nearest?1:0));
+      if(!c) c=thCmp(a.itemName,b.itemName);
+    } else {
+      var pa=lotPrice(a), pb=lotPrice(b);
+      if(pa==null||pb==null) c=nul(pa,pb); else c=(mode==="priceDesc"?-1:1)*(pa-pb);
+      if(!c) c=thCmp(a.itemName,b.itemName);
+    }
+    return c||(idx.get(a)-idx.get(b));
+  });
+  return out;
+}
+
 function renderLots(){
   var el=$("t-lots");
   if(!snap){ el.innerHTML=noData(); return; }
@@ -299,7 +356,7 @@ function renderLots(){
     return d.lots.some(function(l){ return (l.lotNo||"").toLowerCase().indexOf(term)>=0; });
   };
   var base=V.showExpired?drugs:getDrugsNoExp();
-  var rows=base.filter(function(d){ return statusOk(d) && match(d); });
+  var rows=sortDrugs(base.filter(function(d){ return statusOk(d) && match(d); }),V.sort);
   var lots=0,expired=0,soon=0;
   rows.forEach(function(d){ lots+=d.lotCount; d.lots.forEach(function(l){ var dd=daysTo(l.expire); if(dd!=null && dd>=0 && dd<=180) soon++; }); });
   // นับล็อตหมดอายุจากชุดเต็มเสมอ (แม้ซ่อนอยู่) จะได้รู้ว่ามีที่ถูกซ่อนกี่ล็อต
@@ -307,6 +364,7 @@ function renderLots(){
   var h=searchBox("lots","ค้นหาชื่อยา / รหัส / เลขล็อต",V.term);
   h+='<div class="tgs"><button type="button" class="tg'+(V.showExpired?' on':'')+'" id="tg-exp">'+(V.showExpired?'👁 แสดงล็อตหมดอายุ':'🚫 ซ่อนล็อตหมดอายุ')+'</button>'+
      '<button type="button" class="tg inact'+(V.showInactive?' on':'')+'" id="tg-inact">'+(V.showInactive?'☑ รวมรหัสที่ปิด (ไม่ใช่ Y)':'☐ เฉพาะเปิดรหัส = Y')+'</button></div>';
+  h+='<div style="margin-top:8px">'+selHtml("sel-lsort","เรียงตาม",LOT_SORTS,V.sort)+'</div>';
   h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["ล็อต",fmtNum(lots,0)],["หมดอายุแล้ว",fmtNum(expired,0)],["≤ 180 วัน",fmtNum(soon,0)]]);
   if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
   rows.slice(0,V.limit).forEach(function(d){
@@ -337,41 +395,153 @@ function renderLots(){
   bindSearch("lots",V,renderLots);
   $("tg-exp").onclick=function(){ V.showExpired=!V.showExpired; renderLots(); };
   $("tg-inact").onclick=function(){ V.showInactive=!V.showInactive; renderLots(); };
+  $("sel-lsort").onchange=function(){ V.sort=this.value; V.limit=60; renderLots(); window.scrollTo(0,0); };
   var m=$("more-lots"); if(m) m.onclick=function(){ V.limit+=60; renderLots(); };
   Array.prototype.forEach.call(el.querySelectorAll("button[data-info]"),function(b){ b.onclick=function(){ openInfo(+b.getAttribute("data-info")); }; });
 }
 
+var PO_TYPES={"1":"รับจากการสั่งซื้อ","4":"รับโอนระหว่างคลังใหญ่","100":"รับจากการขอยืม","300":"รับจากการคืนสินค้า(ให้ยืม)","400":"รับจากการแลกเปลี่ยน",
+  "20999":"รับบริจาคคลังย่อย","30999":"รับบริจาคคลังใหญ่","40999":"รับคืนสินค้าจากคลังย่อย","50999":"รับคืนจากคนไข้"};
+function poTypeKey(id){ id=id==null?"":String(id); return PO_TYPES.hasOwnProperty(id)?id:"?"; }   // ? = อื่นๆ (ไม่มี/ไม่รู้จัก) ข้อมูลจะได้ไม่หลุด
+function poTypeLabel(k){ return k==="?"?"อื่นๆ":(PO_TYPES[k]||"อื่นๆ"); }
+var PO_SORTS=[["poNo","เลขที่ใบสั่งซื้อ (stock_po_no)"],["total","มูลค่าซื้อ (stock_po_total) มาก → น้อย"],["price","ราคาซื้อ (stock_po_price) มาก → น้อย"]];
+function poMonthCls(iso){
+  var d=parseDay(iso); if(d==null) return "";
+  var t=new Date(d), n=new Date();
+  var diff=(n.getFullYear()*12+n.getMonth())-(t.getUTCFullYear()*12+t.getUTCMonth());
+  if(diff<0) diff=0;
+  return diff<4?("mo"+diff):"";
+}
 function renderPo(){
   var el=$("t-po");
   if(!snap){ el.innerHTML=noData(); return; }
-  var term=view.po.term.toLowerCase();
-  var rows=(snap.po||[]).filter(function(r){
+  var V=view.po, term=V.term.toLowerCase();
+  var all=snap.po||[];
+  var tset={}; all.forEach(function(r){ tset[poTypeKey(r.po_type_id)]=1; });
+  var types=Object.keys(tset).sort(function(a,b){ return (a==="?"?1e12:+a)-(b==="?"?1e12:+b); });
+  var eff=(V.type==="*"||tset[V.type])?V.type:"*";
+  var rows=all.filter(function(r){
+    if(eff!=="*" && poTypeKey(r.po_type_id)!==eff) return false;
     if(!term) return true;
     return [r.stock_po_no,r.item_name,r.brand_name,r.stock_vendor_name,r.item_id].some(function(v){ return v!=null && String(v).toLowerCase().indexOf(term)>=0; });
   });
+  var byDateNo=function(a,b){
+    var da=a.po_date||"", db=b.po_date||"";
+    if(da!==db) return da<db?1:-1;                       // วันที่ใหม่ก่อน
+    var na=String(a.stock_po_no||""), nb=String(b.stock_po_no||"");
+    return na<nb?-1:(na>nb?1:0);                          // เลขที่ น้อย -> มาก
+  };
+  var idx=new Map(); rows.forEach(function(r,i){ idx.set(r,i); });
+  rows=rows.slice().sort(function(a,b){
+    var c=0;
+    if(V.sort==="total") c=num(b.stock_po_total)-num(a.stock_po_total);
+    else if(V.sort==="price") c=num(b.stock_po_price)-num(a.stock_po_price);
+    if(!c) c=byDateNo(a,b);
+    return c||(idx.get(a)-idx.get(b));                    // เลขที่ซ้ำ (ของแถม) แสดงทุกแถว
+  });
   var set={}, total=0, y=0;
   rows.forEach(function(r){ set[r.stock_po_no]=1; total+=num(r.stock_po_total); if(String(r.note||"").toUpperCase()==="Y") y++; });
-  var h=searchBox("po","ค้นหาเลขที่ PO / ชื่อยา / ผู้ขาย",view.po.term);
+  var topts=[["*","ทั้งหมด"]].concat(types.map(function(k){ return [k,poTypeLabel(k)]; }));
+  var h=searchBox("po","ค้นหาเลขที่ PO / ชื่อยา / ผู้ขาย",V.term);
+  h+='<div class="frow"><div>'+selHtml("sel-posort","เรียงตาม",PO_SORTS,V.sort)+'</div><div>'+selHtml("sel-potype","ประเภทใบสั่งซื้อ",topts,eff)+'</div></div>';
+  h+='<div class="leg">สีเลขที่ PO: <i class="mo0">เดือนนี้</i><i class="mo1">1 เดือนก่อน</i><i class="mo2">2 เดือนก่อน</i><i class="mo3">3 เดือนก่อน</i></div>';
   h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["เลขที่ PO",fmtNum(Object.keys(set).length,0)],["ติดธง Y",fmtNum(y,0)],["มูลค่ารวม",fmtNum(Math.round(total),0)]]);
   if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
-  rows.slice(0,view.po.limit).forEach(function(r){
+  rows.slice(0,V.limit).forEach(function(r){
     var isY=String(r.note||"").toUpperCase()==="Y";
     var pq=num(r.stock_package_qty), uq=num(r.unit_qty);
     var pack = uq>1 ? fmtNum(pq)+" × "+fmtNum(uq) : fmtNum(pq);
+    var mc=poMonthCls(r.po_date);
     h+='<div class="card dc po"><div class="dh">'+(isY?'<span class="flag">Y</span>':'')+
-       '<div class="mono">'+esc(r.stock_po_no||"")+'</div><div class="meta">'+esc(fmtDate(r.po_date))+' · รหัส '+esc(r.item_id)+'</div></div><div class="db">'+
+       '<div class="mono mo '+mc+'">'+esc(r.stock_po_no||"")+'</div><div class="meta">'+esc(fmtDate(r.po_date))+' · รหัส '+esc(r.item_id)+'</div></div><div class="db">'+
        '<div class="nm">'+esc(r.item_name||"")+'</div>'+
        (r.brand_name && r.brand_name!==r.item_name?'<div class="meta">'+esc(r.brand_name)+'</div>':'')+
        '<hr style="margin:10px 0">'+
        '<div class="row" style="margin-top:0"><div><div class="lb">แพ็ค</div><div class="val">'+esc(pack)+'</div></div>'+
        '<div><div class="lb">จำนวนรวม</div><div class="val">'+esc(fmtNum(num(r.stock_po_qty)))+'</div></div>'+
+       '<div><div class="lb">ราคา</div><div class="val">'+esc(fmtNum(num(r.stock_po_price)))+'</div></div>'+
        '<div><div class="lb">มูลค่า</div><div class="val">'+esc(fmtNum(num(r.stock_po_total)))+'</div></div></div>'+
-       '<div style="margin-top:8px"><span class="pill">'+esc(r.item_unit_name||r.unit||"—")+'</span> <span class="meta">'+esc(r.stock_vendor_name||"ไม่ระบุผู้ขาย")+'</span></div></div></div>';
+       '<div style="margin-top:8px"><span class="pill">'+esc(r.item_unit_name||r.unit||"—")+'</span> <span class="pill">'+esc(poTypeLabel(poTypeKey(r.po_type_id)))+'</span> <span class="meta">'+esc(r.stock_vendor_name||"ไม่ระบุผู้ขาย")+'</span></div></div></div>';
   });
-  if(rows.length>view.po.limit) h+='<button class="btn btn-p more" id="more-po">แสดงเพิ่ม ('+(rows.length-view.po.limit)+' รายการที่เหลือ)</button>';
+  if(rows.length>V.limit) h+='<button class="btn btn-p more" id="more-po">แสดงเพิ่ม ('+(rows.length-V.limit)+' รายการที่เหลือ)</button>';
   el.innerHTML=h;
-  bindSearch("po",view.po,renderPo);
-  var m=$("more-po"); if(m) m.onclick=function(){ view.po.limit+=60; renderPo(); };
+  bindSearch("po",V,renderPo);
+  $("sel-posort").onchange=function(){ V.sort=this.value; V.limit=60; renderPo(); window.scrollTo(0,0); };
+  $("sel-potype").onchange=function(){ V.type=this.value; V.limit=60; renderPo(); window.scrollTo(0,0); };
+  var m=$("more-po"); if(m) m.onclick=function(){ V.limit+=60; renderPo(); };
+}
+
+/* ===================== ค้างจ่ายยา (ใบเบิกคลังใหญ่ -> คลังย่อย ที่ยังมีจำนวนค้างจ่าย) ===================== */
+function isoLocal(d){ function z(n){return (n<10?"0":"")+n;} return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function renderPend(){
+  var el=$("t-pend");
+  if(!snap){ el.innerHTML=noData(); return; }
+  var V=view.pend, all=snap.pending||[];
+  if(!all.length){ el.innerHTML='<div class="empty">ยังไม่มีข้อมูลค้างจ่ายยาในชุดข้อมูลนี้\nผู้ดูแลต้องดึงข้อมูลใหม่จากฐานคลังแล้วส่งขึ้นคลาวด์</div>'; return; }
+  var n=new Date();
+  if(!V.from) V.from=isoLocal(new Date(n.getFullYear(),n.getMonth(),1));
+  if(!V.to) V.to=isoLocal(n);
+  var whs={}; all.forEach(function(r){ whs[r.warehouse_id]=r.warehouse_name; });
+  var whKeys=Object.keys(whs).map(Number).sort(function(a,b){return a-b;});
+  var effWh=(V.wh===0||whs[V.wh])?V.wh:0;
+  var depSet={}; all.forEach(function(r){ if(effWh===0||r.warehouse_id===effWh) depSet[r.department_name]=1; });
+  var depAll=Object.keys(depSet).sort(thCmp);
+  V.deps=V.deps.filter(function(d){ return depSet[d]; });
+  var term=V.term.toLowerCase();
+  var rows=all.filter(function(r){
+    var d=r.d||"";
+    if(d<V.from||d>V.to) return false;
+    if(effWh!==0 && r.warehouse_id!==effWh) return false;
+    if(V.deps.length && V.deps.indexOf(r.department_name)<0) return false;
+    if(!term) return true;
+    return [r.item_name,r.item_code,r.subdraw_id,r.department_name].some(function(v){ return v!=null && String(v).toLowerCase().indexOf(term)>=0; });
+  }).sort(function(a,b){
+    return thCmp(a.warehouse_name,b.warehouse_name)||thCmp(a.department_name,b.department_name)||
+           (num(a.subdraw_id)-num(b.subdraw_id))||thCmp(a.item_name,b.item_name);
+  });
+  var docs={}; rows.forEach(function(r){ docs[r.subdraw_id]=1; });
+  var wopts=[["0","ทุกคลังใหญ่"]].concat(whKeys.map(function(k){ return [String(k),whs[k]]; }));
+  var depLabel=V.deps.length===0?"ทุกคลังย่อย":(V.deps.length===1?V.deps[0]:(V.deps.length+" คลังย่อย"));
+  var h=searchBox("pend","ค้นหาชื่อยา / รหัส / เลขที่ใบเบิก",V.term);
+  h+='<div class="frow"><div><label for="d-from">ตั้งแต่วันที่</label><input class="fld" type="date" id="d-from" value="'+esc(V.from)+'"></div>'+
+     '<div><label for="d-to">ถึงวันที่</label><input class="fld" type="date" id="d-to" value="'+esc(V.to)+'"></div></div>';
+  h+='<div class="frow"><div>'+selHtml("sel-pwh","คลังใหญ่",wopts,effWh)+'</div></div>';
+  h+='<details class="dpd" style="margin-top:6px"><summary>คลังย่อย: '+esc(depLabel)+'</summary><div class="dep">'+
+     depAll.map(function(d,i){ return '<label><input type="checkbox" data-dep="'+i+'"'+(V.deps.indexOf(d)>=0?' checked':'')+'> '+esc(d)+'</label>'; }).join("")+
+     '</div><button type="button" class="btn btn-o" id="dep-clr">ล้าง (ทุกคลังย่อย)</button></details>';
+  h+=chipsHtml([["ใบเบิก",fmtNum(Object.keys(docs).length,0)],["รายการ",fmtNum(rows.length,0)]]);
+  if(!rows.length) h+='<div class="empty">ไม่พบรายการค้างจ่ายในช่วงที่เลือก</div>';
+  var lw=null, ld=null;
+  rows.slice(0,V.limit).forEach(function(r){
+    if(r.warehouse_name!==lw){ h+='<div class="grp">คลัง : '+esc(r.warehouse_name)+'</div>'; lw=r.warehouse_name; ld=null; }
+    if(r.department_name!==ld){ h+='<div class="grp sub">หน่วยงาน : '+esc(r.department_name)+'</div>'; ld=r.department_name; }
+    var wait=(snap.pending_po&&snap.pending_po[r.item_id])||[];
+    h+='<div class="card dc pend"><div class="dh"><span class="mono mo mo1">'+esc(r.subdraw_id)+'</span> <span class="meta">'+esc(fmtDate(r.d))+' · รหัส '+esc(r.item_code)+' · x'+esc(fmtNum(num(r.unit_qty),0))+'</span></div><div class="db">'+
+       '<div class="nm">'+esc(r.item_name)+'</div><hr style="margin:10px 0">'+
+       '<div class="row" style="margin-top:0"><div><div class="lb">จำนวนเบิก</div><div class="val">'+esc(fmtNum(num(r.pkg_qty),0))+'</div></div>'+
+       '<div><div class="lb">จำนวนจ่าย</div><div class="val">'+esc(fmtNum(num(r.pkg_qty)-num(r.remain),0))+'</div></div>'+
+       '<div><div class="lb">ค้างจ่าย</div><div class="val bad">'+esc(fmtNum(num(r.remain),0))+'</div></div>'+
+       '<div><div class="lb">คงเหลือคลังย่อย</div><div class="val">'+(r.sub_remain==null?"—":esc(fmtNum(num(r.sub_remain),0)))+'</div></div></div>'+
+       (wait.length?'<div class="pk">รอส่ง: '+wait.map(function(p){ return '<span class="pill">'+esc(p)+'</span>'; }).join("")+'</div>':'')+
+       '</div></div>';
+  });
+  if(rows.length>V.limit) h+='<button class="btn btn-p more" id="more-pend">แสดงเพิ่ม ('+(rows.length-V.limit)+' รายการที่เหลือ)</button>';
+  var open=el.querySelector("details.dpd")&&el.querySelector("details.dpd").open;
+  el.innerHTML=h;
+  if(open) el.querySelector("details.dpd").open=true;
+  bindSearch("pend",V,renderPend);
+  $("d-from").onchange=function(){ if(this.value){ V.from=this.value; if(V.to<V.from) V.to=V.from; V.limit=60; renderPend(); } };
+  $("d-to").onchange=function(){ if(this.value){ V.to=this.value; if(V.from>V.to) V.from=V.to; V.limit=60; renderPend(); } };
+  $("sel-pwh").onchange=function(){ V.wh=+this.value; V.deps=[]; V.limit=60; renderPend(); };
+  Array.prototype.forEach.call(el.querySelectorAll("input[data-dep]"),function(c){
+    c.onchange=function(){
+      var name=depAll[+c.getAttribute("data-dep")], k=V.deps.indexOf(name);
+      if(c.checked&&k<0) V.deps.push(name); if(!c.checked&&k>=0) V.deps.splice(k,1);
+      V.limit=60; renderPend(); var dd=el.querySelector("details.dpd"); if(dd) dd.open=true;
+    };
+  });
+  $("dep-clr").onclick=function(){ V.deps=[]; renderPend(); var dd=el.querySelector("details.dpd"); if(dd) dd.open=true; };
+  var m=$("more-pend"); if(m) m.onclick=function(){ V.limit+=60; renderPend(); };
 }
 
 /* ===================== ข้อมูลยา (info / เบิก 4 เดือน / ยอดจ่าย 12 เดือน) ===================== */
@@ -457,6 +627,60 @@ function openInfo(id){
 function closeInfo(){ openId=null; $("ov").hidden=true; $("ov").innerHTML=""; document.body.style.overflow=""; }
 window.addEventListener("popstate",function(){ if(!$("ov").hidden) closeInfo(); });
 
+var HELP_HTML=
+'<div class="card gd"><h3>1) เริ่มใช้ครั้งแรก</h3><ol>'+
+'<li>เปิดลิงก์ที่ผู้ดูแลส่งให้ (ลิงก์ตั้งค่าให้เองอัตโนมัติ ไม่ต้องพิมพ์อะไร)</li>'+
+'<li>กดปุ่ม <b>"อัปเดตจากคลาวด์"</b> ด้านบน รอสักครู่จนขึ้นว่าอัปเดตแล้ว</li>'+
+'<li>ข้อมูลจะถูกเก็บไว้ในเครื่อง หลังจากนี้เปิดดูได้แม้ไม่มีอินเทอร์เน็ต</li></ol>'+
+'<div class="tip">ข้อมูลนี้เป็น <b>สำเนา ณ เวลาที่ผู้ดูแลส่งขึ้นคลาวด์</b> ไม่ใช่ข้อมูลสดตลอดเวลา ดูเวลาได้ที่บรรทัดใต้ชื่อหน้า ("ข้อมูล ณ ...")</div></div>'+
+
+'<div class="card gd"><h3>2) หน้า "คงคลัง" — อ่านการ์ดยา</h3><ul>'+
+'<li>1 การ์ด = ยา 1 รายการ บอกชื่อ รหัส จำนวนล็อต และหน่วย</li>'+
+'<li><b>คงเหลือรวม</b> แสดงเป็นกล่อง (หรือหน่วยบรรจุ) และเศษเป็นเม็ด/หน่วยเล็ก ใต้ตัวเลขมีจำนวนรวมเป็นเม็ด</li>'+
+'<li><b>ล็อตใกล้หมดอายุ</b> คือวันหมดอายุของล็อตที่ใกล้ที่สุด</li>'+
+'<li>แถบสีซ้ายและแถบข้อความบอกสถานะวันหมดอายุ:<br>'+
+'<span class="dot" style="background:var(--ok)"></span>เขียว = เหลือมากกว่า 180 วัน<br>'+
+'<span class="dot" style="background:var(--warn)"></span>ส้ม = เหลือ 91–180 วัน<br>'+
+'<span class="dot" style="background:var(--bad)"></span>แดง = เหลือไม่เกิน 90 วัน หรือหมดอายุแล้ว<br>'+
+'<span class="dot" style="background:#64748b"></span>เทา = ไม่ระบุวันหมดอายุ</li>'+
+'<li>แตะ <b>"แยกดูล็อต"</b> เพื่อดูแต่ละล็อต วันหมดอายุ คลังที่เก็บ และจำนวน</li>'+
+'<li>ยาที่ไม่มีของเหลือจะแสดงชื่อและเลข 0 ไว้ เพื่อให้รู้ว่ายามีอยู่ในรายการแต่หมดสต็อก</li></ul></div>'+
+
+'<div class="card gd"><h3>3) ค้นหา</h3><ul>'+
+'<li>พิมพ์ <b>ชื่อยา รหัส หรือเลขล็อต</b> ในช่องค้นหา ผลจะเปลี่ยนตามที่พิมพ์ทันที</li>'+
+'<li>กด <b>✕</b> หรือลบคำค้นจนว่าง รายการจะกลับไปอยู่ตำแหน่งเดิมที่เลื่อนค้างไว้ก่อนเริ่มค้น</li></ul></div>'+
+
+'<div class="card gd"><h3>4) ปุ่มเลือกแสดง</h3><ul>'+
+'<li><b>"เฉพาะเปิดรหัส = Y"</b> (ค่าเริ่มต้น) แสดงเฉพาะยาที่เปิดรหัสอยู่ กดเป็น <b>"รวมรหัสที่ปิด"</b> เพื่อดูตัวที่ไม่ใช่ Y ด้วย เช่น ใช้ตรวจว่ายาตัวไหนยังอยู่หรือไม่อยู่ในบัญชี</li>'+
+'<li><b>"แสดงล็อตหมดอายุ"</b> กดเพื่อสลับเป็น <b>"ซ่อนล็อตหมดอายุ"</b> ล็อตที่หมดอายุแล้วจะหายไป ถ้ายาตัวนั้นเหลือแต่ล็อตหมดอายุก็จะหายไปทั้งการ์ด (ตัวเลข "หมดอายุแล้ว" ด้านบนยังนับให้ครบ)</li></ul>'+
+'<div class="tip">เมื่อปิดแล้วเปิดหน้าเว็บใหม่ ปุ่มเหล่านี้จะกลับเป็นค่าเริ่มต้น</div></div>'+
+
+'<div class="card gd"><h3>5) ปุ่ม "ข้อมูลยา"</h3>'+
+'<p>แตะที่การ์ดยาเพื่อเปิดหน้าข้อมูลยา มี 3 ส่วน:</p><ul>'+
+'<li><b>ข้อมูลทั่วไป</b> รหัสยา ขนาดบรรจุ ราคา ผู้จำหน่าย ชื่อการค้า</li>'+
+'<li><b>เบิกจากคลัง ย้อนหลัง 4 เดือน</b> ยอดเบิกรายเดือน</li>'+
+'<li><b>ยอดจ่ายผู้ป่วยรายเดือน แยกห้อง/หน่วย</b> ย้อนหลัง 12 เดือน สลับดูเป็น <b>เม็ด / กล่อง</b> ได้ด้วยปุ่มด้านขวา</li></ul>'+
+'<p>กดปุ่ม "กลับ" ด้านบน (หรือปุ่มย้อนกลับของมือถือ) เพื่อกลับมาหน้ารายการ</p>'+
+'<div class="tip">ยอดจ่ายผู้ป่วยจะมีก็ต่อเมื่อผู้ดูแลอัปเดตจาก HOSxP แล้วส่งขึ้นคลาวด์ ถ้าขึ้นว่ายังไม่เคยอัปเดตยอดจ่าย แปลว่ายังไม่มีชุดนั้น ให้แจ้งผู้ดูแล</div></div>'+
+
+'<div class="card gd"><h3>6) หน้า "ใบสั่งซื้อ"</h3><ul>'+
+'<li>แสดงรายการใบสั่งซื้อยา เรียงจากใหม่ไปเก่า ค้นหาได้ด้วย เลขที่ PO ชื่อยา หรือผู้ขาย</li>'+
+'<li>การ์ดบอกแพ็ค จำนวนรวม มูลค่า และผู้ขาย (ป้าย Y มุมขวา คือรายการที่ติดธง Y)</li></ul></div>'+
+
+'<div class="card gd"><h3>7) เมื่อมีข้อมูลใหม่</h3><ul>'+
+'<li>ถ้าด้านบนขึ้นข้อความแถบสีเหลืองว่ามีชุดใหม่ กด <b>"อัปเดตจากคลาวด์"</b></li>'+
+'<li>ถ้าอัปเดตไม่สำเร็จ ข้อมูลเดิมในเครื่องยังอยู่ครบ ใช้ต่อได้</li></ul></div>'+
+
+'<div class="card gd"><h3>7.1) เรียง/กรองในหน้าต่าง ๆ</h3><ul>'+
+'<li><b>คงเหลือ:</b> เรียงตามชื่อยาเป็นค่าเริ่มต้น เปลี่ยนเป็นวันหมดอายุหรือราคาซื้อล่าสุดได้จากช่อง "เรียงตาม" (ราคาซื้อต้องมีข้อมูลยาในชุดข้อมูล)</li>'+
+'<li><b>ใบสั่งซื้อ:</b> เลือกเรียงตามเลขที่ / มูลค่า / ราคา และกรองประเภทใบสั่งซื้อ (ค่าเริ่มต้น = รับจากการสั่งซื้อ) เลขที่ซ้ำคือของแถม แสดงครบทุกแถว สีเลขที่ PO: เขียว = เดือนนี้, เหลือง = 1 เดือนก่อน, ส้ม = 2 เดือนก่อน, เทา = 3 เดือนก่อน</li>'+
+'<li><b>ค้างจ่ายยา:</b> ดูใบเบิกคลังใหญ่ → คลังย่อยที่ยังมีจำนวนค้างจ่าย เลือกช่วงวันที่ คลังใหญ่ และคลังย่อยได้ (เฉพาะยา ย้อนหลัง 6 เดือน)</li></ul></div>'+
+
+'<div class="card gd"><h3>8) ปัญหาที่พบบ่อย</h3><ul>'+
+'<li><b>ขึ้น "ยังไม่มีข้อมูลในเครื่อง"</b> กด "อัปเดตจากคลาวด์" ต้องมีอินเทอร์เน็ตในครั้งนี้</li>'+
+'<li><b>ขึ้น "โทเคนใช้ไม่ได้" หรือโหลดไม่ได้</b> ขอลิงก์ตั้งค่าใหม่จากผู้ดูแลแล้วแตะเปิดอีกครั้ง</li>'+
+'<li><b>ไม่เห็นยาบางตัว</b> เช็คว่าเลือก "เฉพาะเปิดรหัส = Y" หรือ "ซ่อนล็อตหมดอายุ" อยู่หรือไม่ และพิมพ์ชื่อให้ตรงกับชื่อในคลัง</li>'+
+'<li><b>ตัวเลขไม่ตรงกับที่เห็นหน้างาน</b> ดูเวลา "ข้อมูล ณ ..." เพราะเป็นสำเนา ไม่ใช่ข้อมูลสด</li></ul></div>';
 function renderSet(){
   var el=$("t-set");
   el.innerHTML=
@@ -496,7 +720,7 @@ function renderAsOf(){
 }
 function setSnap(s){
   snap=s; drugs=buildDrugs(s.lots||[]); drugsNoExp=null; buildIndex(s);
-  renderAsOf(); renderLots(); renderPo(); renderSet();
+  renderAsOf(); renderLots(); renderPo(); renderPend(); renderSet();
 }
 
 /* ===================== อัปเดตจากคลาวด์ ===================== */
@@ -581,8 +805,9 @@ function updateFromCloud(){
 }
 
 /* ===================== แท็บ / เริ่มต้น ===================== */
+$("t-help").innerHTML=HELP_HTML;
 function showTab(t){
-  ["lots","po","set"].forEach(function(k){ $("t-"+k).hidden = (k!==t); });
+  ["lots","po","pend","help","set"].forEach(function(k){ $("t-"+k).hidden = (k!==t); });
   Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){ b.classList.toggle("on", b.getAttribute("data-t")===t); });
   window.scrollTo(0,0);
 }
@@ -592,7 +817,7 @@ function fixHeader(){ document.documentElement.style.setProperty("--hh",$("hd").
 window.addEventListener("resize",fixHeader);
 
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
-renderLots(); renderPo(); renderSet(); fixHeader();
+renderLots(); renderPo(); renderPend(); renderSet(); fixHeader();
 if(fromLink){ saveCfg(); showMsg("info","ตั้งค่าโทเคนจากลิงก์แล้ว กด “อัปเดตจากคลาวด์” ได้เลย"); }
 kvGet("cfg").then(function(c){
   if(c && !cfg.token && typeof c.token==="string" && c.token){   // localStorage โดนล้าง แต่ยังมีสำรองอยู่
