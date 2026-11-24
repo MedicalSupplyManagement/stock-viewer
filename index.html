@@ -33,6 +33,21 @@ input[type=search],input[type=text],input[type=password]{width:100%;border:1px s
 .chip b{display:block;font-size:16px}
 .chip span{font-size:10.5px;color:var(--mut)}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.sw{position:relative}
+.sw input{padding-right:40px}
+.clr{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;font-size:18px;line-height:1;color:var(--mut);padding:8px 11px;cursor:pointer}
+input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.tgs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tg{border:1.5px solid var(--bad);background:#fff;color:var(--bad);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer}
+.tg.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.tg.inact{border-color:var(--pri);color:var(--pri)}
+.tg.inact.on{color:#fff}
+.card.dc{--ac:var(--pri);padding:0;overflow:hidden;border:1px solid #d5dee8;border-left:6px solid var(--ac);box-shadow:0 3px 10px rgba(15,23,42,.12);margin:0 0 14px}
+.dc .dh{padding:11px 12px 9px;background:#f1f5f7;background:color-mix(in srgb,var(--ac) 9%,#fff);border-bottom:1px solid #dbe3ea;border-bottom-color:color-mix(in srgb,var(--ac) 25%,#fff)}
+.dc .db{padding:10px 12px}
+.dc .nm{font-weight:700;font-size:15.5px;color:#0b3c49}
+.dc .big{font-size:21px;font-weight:800;color:#0b3c49}
+.dc.ok{--ac:var(--ok)}.dc.warn{--ac:var(--warn)}.dc.bad{--ac:var(--bad)}.dc.none{--ac:#64748b}.dc.po{--ac:#2563a8}
 .nm{font-weight:600;font-size:15px}
 .meta{font-size:11px;color:var(--mut);margin-top:1px}
 .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11px;margin-top:4px}
@@ -116,10 +131,10 @@ var DEFAULT_CFG = {owner:"MedicalSupplyManagement", repo:"stock-snapshot", branc
 var cfg = loadCfg();
 var fromLink = applyLinkConfig();
 var snap = null;              // {fetched_at, po[], lots[], warehouses{}}
-var drugs = [];
+var drugs = [], drugsNoExp = null;
 var localMeta = null;         // {sha,date} ของชุดข้อมูลบนคลาวด์ที่ดึงมาเก็บไว้ในเครื่อง
 var cloudHead = null;         // {sha,date} ชุดล่าสุดบนคลาวด์ (ตรวจล่าสุด) หรือ {none:true} / {error:true}
-var view = {lots:{term:"",limit:60}, po:{term:"",limit:60}};
+var view = {lots:{term:"",limit:60,showExpired:true,showInactive:false}, po:{term:"",limit:60}};
 
 function loadCfg(){
   var c = Object.assign({}, DEFAULT_CFG);
@@ -248,27 +263,59 @@ function chipsHtml(items){
 }
 function noData(){ return '<div class="empty">ยังไม่มีข้อมูลในเครื่อง\nกด "อัปเดตจากคลาวด์" ด้านบน</div>'; }
 
+/* ค้นหาแบบ live: จำตำแหน่งหน้าจอก่อนเริ่มพิมพ์ แล้วเลื่อนกลับเมื่อลบคำค้นจนว่าง */
+function searchChange(v,st,rerender){
+  v=v.trim();
+  if(!st.term && v){ st.savedY=window.pageYOffset; st.savedLimit=st.limit; }
+  var cleared=!!st.term && !v;
+  st.term=v; st.limit=60;
+  if(cleared) st.limit=Math.max(60,st.savedLimit||60);
+  rerender();
+  if(cleared){ var y=st.savedY||0; requestAnimationFrame(function(){ window.scrollTo(0,y); requestAnimationFrame(function(){ window.scrollTo(0,y); }); }); }
+}
+function getDrugsNoExp(){
+  if(!drugsNoExp){
+    drugsNoExp=buildDrugs((snap.lots||[]).filter(function(r){ var dd=daysTo(str(r.expire_date)); return dd==null||dd>=0; }));
+  }
+  return drugsNoExp;
+}
+function searchBox(id,ph,term){
+  return '<div class="sw"><input type="search" id="q-'+id+'" placeholder="'+ph+'" value="'+esc(term)+'">'+(term?'<button type="button" class="clr" id="clr-'+id+'" aria-label="ล้างคำค้น">✕</button>':'')+'</div>';
+}
+function bindSearch(id,st,rerender){
+  var q=$("q-"+id);
+  q.oninput=function(){ var pos=q.selectionStart; searchChange(q.value,st,rerender); var n=$("q-"+id); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
+  var c=$("clr-"+id); if(c) c.onclick=function(){ searchChange("",st,rerender); };
+}
+
 function renderLots(){
   var el=$("t-lots");
   if(!snap){ el.innerHTML=noData(); return; }
-  var term=view.lots.term.toLowerCase();
-  var rows=drugs.filter(function(d){
+  var V=view.lots, term=V.term.toLowerCase();
+  var statusOk=function(d){ return V.showInactive || (d.useStatus||"Y")==="Y"; };
+  var match=function(d){
     if(!term) return true;
     if(d.itemName.toLowerCase().indexOf(term)>=0 || String(d.itemId).indexOf(term)>=0) return true;
     return d.lots.some(function(l){ return (l.lotNo||"").toLowerCase().indexOf(term)>=0; });
-  });
+  };
+  var base=V.showExpired?drugs:getDrugsNoExp();
+  var rows=base.filter(function(d){ return statusOk(d) && match(d); });
   var lots=0,expired=0,soon=0;
-  rows.forEach(function(d){ lots+=d.lotCount; d.lots.forEach(function(l){ var dd=daysTo(l.expire); if(dd==null) return; if(dd<0) expired++; else if(dd<=180) soon++; }); });
-  var h='<input type="search" id="q-lots" placeholder="ค้นหาชื่อยา / รหัส / เลขล็อต" value="'+esc(view.lots.term)+'">';
+  rows.forEach(function(d){ lots+=d.lotCount; d.lots.forEach(function(l){ var dd=daysTo(l.expire); if(dd!=null && dd>=0 && dd<=180) soon++; }); });
+  // นับล็อตหมดอายุจากชุดเต็มเสมอ (แม้ซ่อนอยู่) จะได้รู้ว่ามีที่ถูกซ่อนกี่ล็อต
+  drugs.filter(function(d){ return statusOk(d) && match(d); }).forEach(function(d){ d.lots.forEach(function(l){ var dd=daysTo(l.expire); if(dd!=null && dd<0) expired++; }); });
+  var h=searchBox("lots","ค้นหาชื่อยา / รหัส / เลขล็อต",V.term);
+  h+='<div class="tgs"><button type="button" class="tg'+(V.showExpired?' on':'')+'" id="tg-exp">'+(V.showExpired?'👁 แสดงล็อตหมดอายุ':'🚫 ซ่อนล็อตหมดอายุ')+'</button>'+
+     '<button type="button" class="tg inact'+(V.showInactive?' on':'')+'" id="tg-inact">'+(V.showInactive?'☑ รวมรหัสที่ปิด (ไม่ใช่ Y)':'☐ เฉพาะเปิดรหัส = Y')+'</button></div>';
   h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["ล็อต",fmtNum(lots,0)],["หมดอายุแล้ว",fmtNum(expired,0)],["≤ 180 วัน",fmtNum(soon,0)]]);
   if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
-  rows.slice(0,view.lots.limit).forEach(function(d){
+  rows.slice(0,V.limit).forEach(function(d){
     var rem=remainOf(d.nearest), pk=packText(d.totalQty,d.packSize,d.packUnit,d.unit);
     var st=d.useStatus; var cls=st==="Y"?"y":(st==="N"?"n":"");
-    h+='<div class="card"><div class="nm">'+esc(d.itemName)+'</div>'+
+    h+='<div class="card dc '+rem.level+'"><div class="dh"><div class="nm">'+esc(d.itemName)+'</div>'+
        '<div class="meta">รหัส '+d.itemId+' · '+d.lotCount+' ล็อต · หน่วย '+esc(d.unit||"—")+'</div>'+
-       '<span class="pill '+cls+'">เปิดรหัส = '+esc(st||"—")+'</span>'+
-       '<div class="row"><div style="flex:3"><div class="lb">คงเหลือรวม</div><div class="big">'+esc(pk.main)+'</div>'+(pk.sub?'<div class="meta">'+esc(pk.sub)+'</div>':'')+'</div>'+
+       '<span class="pill '+cls+'">เปิดรหัส = '+esc(st||"—")+'</span></div><div class="db">'+
+       '<div class="row" style="margin-top:0"><div style="flex:3"><div class="lb">คงเหลือรวม</div><div class="big">'+esc(pk.main)+'</div>'+(pk.sub?'<div class="meta">'+esc(pk.sub)+'</div>':'')+'</div>'+
        '<div style="flex:2"><div class="lb">ล็อตใกล้หมดอายุ</div><div class="val">'+esc(fmtDate(d.nearest))+'</div></div></div>'+
        '<div class="exp '+rem.level+'">'+esc(rem.text)+'</div>'+
        (hasInfo(d.itemId)?'<button class="btn btn-o" data-info="'+d.itemId+'">ข้อมูลยา</button>':'');
@@ -283,12 +330,14 @@ function renderLots(){
       });
       h+='</details>';
     }
-    h+='</div>';
+    h+='</div></div>';
   });
-  if(rows.length>view.lots.limit) h+='<button class="btn btn-p more" id="more-lots">แสดงเพิ่ม ('+(rows.length-view.lots.limit)+' รายการที่เหลือ)</button>';
+  if(rows.length>V.limit) h+='<button class="btn btn-p more" id="more-lots">แสดงเพิ่ม ('+(rows.length-V.limit)+' รายการที่เหลือ)</button>';
   el.innerHTML=h;
-  var q=$("q-lots"); q.oninput=function(){ view.lots.term=q.value.trim(); view.lots.limit=60; var pos=q.selectionStart; renderLots(); var n=$("q-lots"); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
-  var m=$("more-lots"); if(m) m.onclick=function(){ view.lots.limit+=60; renderLots(); };
+  bindSearch("lots",V,renderLots);
+  $("tg-exp").onclick=function(){ V.showExpired=!V.showExpired; renderLots(); };
+  $("tg-inact").onclick=function(){ V.showInactive=!V.showInactive; renderLots(); };
+  var m=$("more-lots"); if(m) m.onclick=function(){ V.limit+=60; renderLots(); };
   Array.prototype.forEach.call(el.querySelectorAll("button[data-info]"),function(b){ b.onclick=function(){ openInfo(+b.getAttribute("data-info")); }; });
 }
 
@@ -302,26 +351,26 @@ function renderPo(){
   });
   var set={}, total=0, y=0;
   rows.forEach(function(r){ set[r.stock_po_no]=1; total+=num(r.stock_po_total); if(String(r.note||"").toUpperCase()==="Y") y++; });
-  var h='<input type="search" id="q-po" placeholder="ค้นหาเลขที่ PO / ชื่อยา / ผู้ขาย" value="'+esc(view.po.term)+'">';
+  var h=searchBox("po","ค้นหาเลขที่ PO / ชื่อยา / ผู้ขาย",view.po.term);
   h+=chipsHtml([["รายการยา",fmtNum(rows.length,0)],["เลขที่ PO",fmtNum(Object.keys(set).length,0)],["ติดธง Y",fmtNum(y,0)],["มูลค่ารวม",fmtNum(Math.round(total),0)]]);
   if(!rows.length) h+='<div class="empty">ไม่พบรายการที่ค้นหา</div>';
   rows.slice(0,view.po.limit).forEach(function(r){
     var isY=String(r.note||"").toUpperCase()==="Y";
     var pq=num(r.stock_package_qty), uq=num(r.unit_qty);
     var pack = uq>1 ? fmtNum(pq)+" × "+fmtNum(uq) : fmtNum(pq);
-    h+='<div class="card">'+(isY?'<span class="flag">Y</span>':'')+
-       '<div class="mono">'+esc(r.stock_po_no||"")+'</div><div class="meta">'+esc(fmtDate(r.po_date))+' · รหัส '+esc(r.item_id)+'</div>'+
-       '<div class="nm" style="margin-top:8px">'+esc(r.item_name||"")+'</div>'+
+    h+='<div class="card dc po"><div class="dh">'+(isY?'<span class="flag">Y</span>':'')+
+       '<div class="mono">'+esc(r.stock_po_no||"")+'</div><div class="meta">'+esc(fmtDate(r.po_date))+' · รหัส '+esc(r.item_id)+'</div></div><div class="db">'+
+       '<div class="nm">'+esc(r.item_name||"")+'</div>'+
        (r.brand_name && r.brand_name!==r.item_name?'<div class="meta">'+esc(r.brand_name)+'</div>':'')+
        '<hr style="margin:10px 0">'+
        '<div class="row" style="margin-top:0"><div><div class="lb">แพ็ค</div><div class="val">'+esc(pack)+'</div></div>'+
        '<div><div class="lb">จำนวนรวม</div><div class="val">'+esc(fmtNum(num(r.stock_po_qty)))+'</div></div>'+
        '<div><div class="lb">มูลค่า</div><div class="val">'+esc(fmtNum(num(r.stock_po_total)))+'</div></div></div>'+
-       '<div style="margin-top:8px"><span class="pill">'+esc(r.item_unit_name||r.unit||"—")+'</span> <span class="meta">'+esc(r.stock_vendor_name||"ไม่ระบุผู้ขาย")+'</span></div></div>';
+       '<div style="margin-top:8px"><span class="pill">'+esc(r.item_unit_name||r.unit||"—")+'</span> <span class="meta">'+esc(r.stock_vendor_name||"ไม่ระบุผู้ขาย")+'</span></div></div></div>';
   });
   if(rows.length>view.po.limit) h+='<button class="btn btn-p more" id="more-po">แสดงเพิ่ม ('+(rows.length-view.po.limit)+' รายการที่เหลือ)</button>';
   el.innerHTML=h;
-  var q=$("q-po"); q.oninput=function(){ view.po.term=q.value.trim(); view.po.limit=60; var pos=q.selectionStart; renderPo(); var n=$("q-po"); n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} };
+  bindSearch("po",view.po,renderPo);
   var m=$("more-po"); if(m) m.onclick=function(){ view.po.limit+=60; renderPo(); };
 }
 
@@ -446,7 +495,7 @@ function renderAsOf(){
   $("asof").textContent = snap ? ("ข้อมูล ณ "+fmtDT(snap.fetched_at)+" · "+drugs.length+" รายการยา · "+(snap.po||[]).length+" แถว PO"+(snap.disp_fetched_at?(" · ยอดจ่าย ณ "+fmtDT(snap.disp_fetched_at)):"")) : "ยังไม่มีข้อมูลในเครื่อง";
 }
 function setSnap(s){
-  snap=s; drugs=buildDrugs(s.lots||[]); buildIndex(s);
+  snap=s; drugs=buildDrugs(s.lots||[]); drugsNoExp=null; buildIndex(s);
   renderAsOf(); renderLots(); renderPo(); renderSet();
 }
 
