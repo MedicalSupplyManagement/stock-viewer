@@ -732,13 +732,13 @@ var HELP_HTML=
 '<div><b>คงคลัง</b>ยาแต่ละตัว ล็อต วันหมดอายุ · ปุ่มกรองรหัสที่ปิด/ล็อตหมดอายุ · เรียงตามชื่อ วันหมดอายุ หรือราคา</div>'+
 '<div><b>ใบสั่งซื้อ</b>PO เรียงใหม่ไปเก่า ค้นด้วยเลข PO ชื่อยา ผู้ขาย · กรองประเภท</div>'+
 '<div><b>ค้างจ่ายยา</b>ใบเบิกคลังใหญ่ → คลังย่อย ที่ยังค้างจ่าย เลือกช่วงวันที่/คลังได้</div>'+
-'<div><b>สต๊อกการ์ด</b>ประวัติรับ–จ่ายรายยา ของคลังยา/คลังน้ำเกลือ (ดูหัวข้อ 4)</div></div>'+
+'<div><b>สต๊อกการ์ด</b>ประวัติรับ–จ่ายรายยา ของคลังยา/คลังน้ำเกลือ ย้อนหลัง 1 ปี (ดูหัวข้อ 4)</div></div>'+
 '<p>แตะที่การ์ดยาเพื่อดู <b>ข้อมูลยา</b>: ข้อมูลทั่วไป · ยอดเบิก 4 เดือน · ยอดจ่ายผู้ป่วย 12 เดือน (สลับเม็ด/กล่องได้) กด “กลับ” เพื่อกลับรายการ</p></div>'+
 
 '<div class="card gd"><h3><span class="no">4</span>สต๊อกการ์ด</h3>'+
-'<ol><li>เปิดแท็บ <b>สต๊อกการ์ด</b> แล้วกดปุ่มเปิดหน้า (ต้องต่อ VPN/ล็อกอิน HOSxP)</li>'+
+'<ol><li>เปิดแท็บ <b>สต๊อกการ์ด</b> — ข้อมูลอยู่ในสำเนา Offline เหมือนแท็บอื่น (ผู้ดูแลดึงจาก HOSxP ในขั้นที่ 1 ของแอป) ไม่ต้องต่อ VPN</li>'+
 '<li>เลือกคลัง (ค่าเริ่มต้น = ทั้งสองคลัง) → พิมพ์ชื่อหรือรหัสยา → เลือกยาจากรายการ</li>'+
-'<li>เลือกช่วงวันที่ และ ทั้งหมด / เฉพาะรับ / เฉพาะจ่าย</li></ol>'+
+'<li>สลับหน่วย <b>เม็ด/กล่อง</b> ได้ (ถ้ายามีขนาดบรรจุ) · เลือกช่วงวันที่ และ ทั้งหมด / เฉพาะรับ / เฉพาะจ่าย (ข้อมูลย้อนหลัง 1 ปีนับจากวันที่ดึง)</li></ol>'+
 '<div class="tip">แถบ <b>เขียว</b> = ยกมา + รับ − จ่าย ตรงกับยอดคงเหลือ · <b>แดง</b> = ไม่ตรง ควรตรวจรายการ</div></div>'+
 
 '<div class="card gd"><h3><span class="no">5</span>เมื่อมีข้อมูลใหม่ / ปัญหาที่พบบ่อย</h3><ul>'+
@@ -748,28 +748,119 @@ var HELP_HTML=
 '<li><b>ไม่เห็นยาบางตัว</b> เช็กปุ่ม “เฉพาะเปิดรหัส = Y” / “ซ่อนล็อตหมดอายุ” (ปิดหน้าเว็บแล้วเปิดใหม่ จะกลับเป็นค่าเริ่มต้น)</li>'+
 '<li><b>ตัวเลขไม่ตรงหน้างาน</b> ดูเวลา “ข้อมูล ณ …” เพราะเป็นสำเนา</li></ul></div>';
 
-/* ===================== แท็บ สต๊อกการ์ด ===================== */
-var SC_KEY="stockviewer.sc.url";
-function getScUrl(){ try{ return (localStorage.getItem(SC_KEY)||"").trim(); }catch(e){ return ""; } }
-function setScUrl(u){ try{ localStorage.setItem(SC_KEY,u); }catch(e){} }
-function safeUrl(u){ return /^https?:\/\//i.test(u); }
+/* ===================== แท็บ สต๊อกการ์ด (อ่านจากสำเนา snap.sc — ดึงพร้อมขั้นที่ 1 ย้อนหลัง 1 ปี) ===================== */
+var SCV={box:false,term:"",wh:0,sel:null,from:"",to:"",mode:"all",limit:80};
+var SC_C={ref:null,rows:{},open:{},drugs:[],byId:{}};
+var SC_WH=[[1,"คลังยา"],[6,"คลังน้ำเกลือและสารน้ำ"]];
+function scStore(){ return (snap&&snap.sc&&snap.sc.u&&snap.sc.r)?snap.sc:null; }
+function scBuild(sc){
+  if(SC_C.ref===sc) return;
+  var d=sc.d||[], T=function(i){ return (i>=0&&i<d.length)?String(d[i]):""; };
+  var rows={}, open={};
+  (sc.r||[]).forEach(function(a){
+    var k=a[0]+"|"+a[1], dt=String(a[2]||"");
+    (rows[k]=rows[k]||[]).push({dt:dt,date:dt.slice(0,10),isIn:a[3]===1,inv:String(a[4]||""),ct:T(a[5]),invName:T(a[6]),lot:T(a[7]),exp:T(a[8]),
+      inQ:num(a[9]),outQ:num(a[10]),left:num(a[11]),inM:num(a[12]),outM:num(a[13]),id:String(a[14]==null?"":a[14])});
+  });
+  Object.keys(rows).forEach(function(k){ rows[k].forEach(function(r){ r.sk=r.dt+"|"+("000000000000"+r.id).slice(-12); });
+    rows[k].sort(function(a,b){ return a.sk<b.sk?-1:(a.sk>b.sk?1:0); }); });
+  (sc.o||[]).forEach(function(a){ open[a[0]+"|"+a[1]]=num(a[2]); });
+  var byId={}, list=(sc.u||[]).map(function(u){ var o={id:u[0],code:String(u[1]||""),name:String(u[2]||""),unit:String(u[3]||"")}; byId[o.id]=o; return o; });
+  SC_C={ref:sc,rows:rows,open:open,drugs:list,byId:byId};
+}
+function scWhs(){ return SCV.wh===0?[1,6]:[SCV.wh]; }
+function scHas(id,whs){ return whs.some(function(w){ var k=id+"|"+w; return SC_C.rows[k]||SC_C.open[k]!=null; }); }
+function scSummary(all,key){
+  var s=SCV.from||null, e=SCV.to||null, opening=SC_C.open[key]||0, hasOpen=false;
+  if(s){ all.forEach(function(r){ if(r.date<s){ opening=r.left; hasOpen=true; } }); }
+  var inR=all.filter(function(r){ return !(s&&r.date<s) && !(e&&r.date>e); });
+  var shown=inR.filter(function(r){ return SCV.mode==="in"?r.isIn:(SCV.mode==="out"?!r.isIn:true); });
+  var si=0,so=0; inR.forEach(function(r){ si+=r.inQ; so+=r.outQ; });
+  var closing=opening+si-so, last=inR.length?inR[inR.length-1].left:null, chk="empty", diff=0;
+  if(last!=null){ if(Math.abs(closing-last)>0.0001){ chk="bad"; diff=closing-last; } else chk="ok"; }
+  return {opening:opening,hasOpen:hasOpen,shown:shown,sumIn:si,sumOut:so,closing:closing,last:last,chk:chk,diff:diff,n:inR.length};
+}
+function scDateShort(d){ return d?(d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(2,4)):"—"; }
+function scTime(dt){ return dt.length>=16?dt.slice(11,16):""; }
 function renderSc(){
   var el=$("t-sc"); if(!el) return;
-  var u=getScUrl(), ok=safeUrl(u);
-  el.innerHTML=
-   '<div class="card gd"><h3>สต๊อกการ์ด (รับ–จ่ายรายยา)</h3>'+
-   '<p>ดูประวัติรับเข้า/จ่ายออกของ <b>คลังยา (1)</b> และ <b>คลังน้ำเกลือ (6)</b> ทีละยา พร้อมยอดยกมา รวมรับ รวมจ่าย และคงเหลือ</p>'+
-   '<div class="sc-steps"><div><i>1</i>เลือกคลัง<br><span class="meta">ทั้งสองคลัง/คลังยา/คลังน้ำเกลือ</span></div>'+
-   '<div><i>2</i>ค้นยา<br><span class="meta">ชื่อหรือรหัส แล้วแตะเลือก</span></div>'+
-   '<div><i>3</i>ช่วงวันที่<br><span class="meta">ทั้งหมด/เฉพาะรับ/เฉพาะจ่าย</span></div></div>'+
-   '<div style="margin-top:14px">'+(ok
-      ? '<a class="btn btn-p btn-big" href="'+esc(u)+'" target="_blank" rel="noopener">เปิดหน้าสต๊อกการ์ด ↗</a>'
-      : '<span class="btn btn-p btn-big off">เปิดหน้าสต๊อกการ์ด ↗</span><div class="hint">ยังไม่ได้ตั้งลิงก์ — ไปที่แท็บ <b>ตั้งค่า</b> ช่อง “ลิงก์หน้าสต๊อกการ์ด” แล้ววางลิงก์ที่ได้จากน้องใบเตย</div>')+'</div>'+
-   '<div class="tip" style="margin-top:12px">สต๊อกการ์ดเป็น <b>ข้อมูลสดจาก HOSxP</b> จึงไม่อยู่ในสำเนา Offline ของหน้านี้ ต้องต่อ VPN/เครือข่ายโรงพยาบาลและเข้าสู่ระบบ HOSxP ก่อนเปิดลิงก์ · ในแอป APK (stock_viewer) มีแท็บ “สต๊อกการ์ด” ใช้งานได้ตรง ๆ</div></div>'+
-   '<div class="card gd"><h3>อ่านผลอย่างไร</h3>'+
-   '<div class="chk"><span class="sw2" style="background:var(--ok)"></span><span><b>แถบเขียว</b> ยกมา + รวมรับ − รวมจ่าย ตรงกับยอดคงเหลือแถวสุดท้าย</span></div>'+
-   '<div class="chk"><span class="sw2" style="background:var(--bad)"></span><span><b>แถบแดง</b> ยอดไม่ตรง ควรตรวจรายการในช่วงนั้น</span></div>'+
-   '<div class="chk"><span class="sw2" style="background:#64748b"></span><span>ยาบางตัวเก็บทั้งสองคลัง จึงแยกตารางต่อคลัง ไม่รวมยอด</span></div></div>';
+  var sc=scStore();
+  if(!snap){ el.innerHTML=noData(); return; }
+  if(!sc){
+    el.innerHTML='<div class="card gd"><h3>สต๊อกการ์ด (รับ–จ่ายรายยา)</h3><div class="hint">ชุดข้อมูลนี้ยังไม่มีสต๊อกการ์ด — ผู้ดูแลต้องเปิดแอป stock_viewer ต่อ VPN กด <b>ขั้นที่ 1 ดึงข้อมูลคลัง</b> (จะดึงสต๊อกการ์ดย้อนหลัง 1 ปีมาด้วย) แล้ว <b>ส่งขึ้นคลาวด์</b> จากนั้นกลับมากด “อัปเดตจากคลาวด์” ที่หน้านี้</div></div>';
+    return;
+  }
+  scBuild(sc);
+  var whs=scWhs(), V=SCV, term=V.term.toLowerCase();
+  var h='<div class="meta" style="margin:2px 0 8px">สำเนา ณ '+esc(fmtDT(sc.at))+' · ข้อมูลตั้งแต่ '+esc(fmtDate(sc.from))+' (ย้อนหลัง 1 ปี)</div>';
+  h+='<div class="seg" id="sc-wh" style="margin-bottom:8px">'+[[0,"ทั้งสองคลัง"],[1,"คลังยา"],[6,"คลังน้ำเกลือ"]].map(function(o){
+     return '<button type="button" data-w="'+o[0]+'"'+(V.wh===o[0]?' class="on"':'')+'>'+o[1]+'</button>'; }).join("")+'</div>';
+  var drug=V.sel!=null?SC_C.byId[V.sel]:null;
+  if(!drug){
+    h+=searchBox("sc","ค้นหาชื่อยา / รหัส",V.term);
+    if(!term){ h+='<div class="empty">พิมพ์ชื่อหรือรหัสยา แล้วแตะเลือกเพื่อดูสต๊อกการ์ด</div>'; }
+    else{
+      var m=SC_C.drugs.filter(function(d){ return (d.name.toLowerCase().indexOf(term)>=0||d.code.toLowerCase().indexOf(term)>=0) && scHas(d.id,whs); });
+      h+='<div class="meta" style="margin:6px 0">พบ '+fmtNum(m.length,0)+' รายการ'+(m.length>40?' (แสดง 40 แรก — พิมพ์เพิ่มเพื่อกรอง)':'')+'</div>';
+      m.slice(0,40).forEach(function(d){
+        h+='<div class="card scpick" data-i="'+d.id+'" style="cursor:pointer"><b>'+esc(d.name)+'</b><div class="meta">รหัส '+esc(d.code)+' · หน่วย '+esc(d.unit||"—")+'</div></div>';
+      });
+    }
+  }else{
+    var inf=infoMap[drug.id]||null, pk=(inf&&num(inf.unit_qty)>1)?num(inf.unit_qty):0, pkName=(inf&&str(inf.pack_name))||"แพ็ค";
+    var useBox=V.box&&pk>0, uName=drug.unit||"หน่วย";
+    var Q=function(v){ return useBox?fmtNum(v/pk,2):fmtNum(v,2); };
+    h+='<div class="card gd"><div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between"><div><b>'+esc(drug.name)+'</b><div class="meta">รหัส '+esc(drug.code)+' · หน่วย '+esc(uName)+(pk>0?(' · 1 '+esc(pkName)+' = '+esc(fmtNum(pk))+' '+esc(uName)):'')+'</div></div>'+
+       '<button type="button" class="btn" id="sc-back" style="background:#eef2f6;color:#334155">← เลือกยาอื่น</button></div>'+
+       '<div class="frow" style="margin-top:8px"><div><label for="sc-from">ตั้งแต่วันที่</label><input class="fld" type="date" id="sc-from" min="'+esc(sc.from)+'" value="'+esc(V.from)+'"></div>'+
+       '<div><label for="sc-to">ถึงวันที่</label><input class="fld" type="date" id="sc-to" value="'+esc(V.to)+'"></div></div>'+
+       '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg" id="sc-mode">'+[["all","ทั้งหมด"],["in","เฉพาะรับ"],["out","เฉพาะจ่าย"]].map(function(o){
+         return '<button type="button" data-m="'+o[0]+'"'+(V.mode===o[0]?' class="on"':'')+'>'+o[1]+'</button>'; }).join("")+'</div>'+
+       (pk>0?'<div class="seg" id="sc-unit">'+[[0,esc(uName)],[1,esc(pkName)]].map(function(o){ return '<button type="button" data-b="'+o[0]+'"'+((useBox?1:0)===o[0]?' class="on"':'')+'>'+o[1]+'</button>'; }).join("")+'</div>':'')+((V.from||V.to)?'<button type="button" class="btn" id="sc-clr" style="background:#eef2f6;color:#334155">ล้างช่วงวันที่</button>':'')+'</div></div>';
+    var any=false;
+    whs.forEach(function(w){
+      var key=drug.id+"|"+w, all=SC_C.rows[key]||[];
+      if(!all.length && SC_C.open[key]==null) return;
+      any=true;
+      var S=scSummary(all,key), col=S.chk==="ok"?"var(--ok)":(S.chk==="bad"?"var(--bad)":"#64748b");
+      var msg=S.chk==="ok"?"✓ ยอดตรง (ยกมา + รับ − จ่าย = คงเหลือ)":(S.chk==="bad"?"✗ ยอดไม่ตรง ต่าง "+Q(S.diff)+" "+(useBox?pkName:uName)+" (ควรตรวจรายการในช่วงนี้)":"ไม่มีรายการในช่วงที่เลือก");
+      h+='<div class="card dc" style="--ac:'+col+'"><div class="dh"><b>'+esc(whName(w))+'</b> <span class="meta">· '+fmtNum(S.n,0)+' รายการในช่วง</span></div><div class="db">'+
+         '<div class="row" style="margin-top:0"><div><div class="lb">ยอดยกมา</div><div class="val">'+esc(Q(S.opening))+'</div></div>'+
+         '<div><div class="lb">รวมรับ</div><div class="val">'+esc(Q(S.sumIn))+'</div></div>'+
+         '<div><div class="lb">รวมจ่าย</div><div class="val">'+esc(Q(S.sumOut))+'</div></div>'+
+         '<div><div class="lb">คงเหลือ</div><div class="val"><b>'+esc(Q(S.closing))+'</b></div></div></div>'+
+         '<div class="chk" style="color:'+col+'"><b>'+esc(msg)+'</b></div>'+
+         (V.from&&!S.hasOpen?'<div class="meta">ไม่มีรายการก่อนวันเริ่ม — ใช้ยอดตั้งต้นของข้อมูล</div>':'');
+      var rows=S.shown, start=Math.max(0,rows.length-V.limit);
+      if(rows.length){
+        h+='<div style="overflow-x:auto;margin-top:8px"><table class="dt"><thead><tr><th>วันที่</th><th>รายการ</th><th>รับ</th><th>จ่าย</th><th>คงเหลือ</th></tr></thead><tbody>';
+        if(start>0) h+='<tr><td colspan="5" class="meta" style="text-align:center">… ซ่อน '+fmtNum(start,0)+' แถวก่อนหน้า</td></tr>';
+        rows.slice(start).forEach(function(r){
+          var what=(r.invName||r.ct||"")+(r.inv?(" · "+r.inv):"")+(r.lot?(" · ล็อต "+r.lot):"");
+          h+='<tr><td>'+esc(scDateShort(r.date))+'<div class="meta">'+esc(scTime(r.dt))+'</div></td><td style="white-space:normal;text-align:left;min-width:120px;max-width:150px;font-size:12px">'+esc(what)+(r.exp?'<div class="meta">หมดอายุ '+esc(r.exp.slice(0,10))+'</div>':'')+'</td>'+
+             '<td style="color:var(--ok)">'+(r.inQ?esc(Q(r.inQ)):"")+'</td><td style="color:var(--bad)">'+(r.outQ?esc(Q(r.outQ)):"")+'</td><td><b>'+esc(Q(r.left))+'</b></td></tr>';
+        });
+        h+='</tbody></table></div>';
+        if(start>0) h+='<button type="button" class="btn btn-p sc-more" style="width:100%;margin-top:8px">แสดงแถวก่อนหน้าเพิ่ม</button>';
+      }
+      h+='</div></div>';
+    });
+    if(!any) h+='<div class="empty">ยานี้ไม่มีสต๊อกการ์ดในคลังที่เลือก</div>';
+  }
+  el.innerHTML=h;
+  Array.prototype.forEach.call(el.querySelectorAll("#sc-wh button"),function(b){ b.onclick=function(){ V.wh=+b.getAttribute("data-w"); V.limit=80; renderSc(); }; });
+  if(!drug){
+    bindSearch("sc",V,renderSc);
+    Array.prototype.forEach.call(el.querySelectorAll(".scpick"),function(c){ c.onclick=function(){ V.sel=+c.getAttribute("data-i"); V.limit=80; renderSc(); window.scrollTo(0,0); }; });
+  }else{
+    $("sc-back").onclick=function(){ V.sel=null; renderSc(); };
+    $("sc-from").onchange=function(){ V.from=this.value||""; if(V.from&&V.to&&V.to<V.from) V.to=V.from; V.limit=80; renderSc(); };
+    $("sc-to").onchange=function(){ V.to=this.value||""; if(V.from&&V.to&&V.from>V.to) V.from=V.to; V.limit=80; renderSc(); };
+    Array.prototype.forEach.call(el.querySelectorAll("#sc-mode button"),function(b){ b.onclick=function(){ V.mode=b.getAttribute("data-m"); V.limit=80; renderSc(); }; });
+    Array.prototype.forEach.call(el.querySelectorAll("#sc-unit button"),function(b){ b.onclick=function(){ V.box=(b.getAttribute("data-b")==="1"); renderSc(); }; });
+    var cl=$("sc-clr"); if(cl) cl.onclick=function(){ V.from=""; V.to=""; renderSc(); };
+    Array.prototype.forEach.call(el.querySelectorAll(".sc-more"),function(b){ b.onclick=function(){ V.limit+=150; renderSc(); }; });
+  }
 }
 function renderSet(){
   var el=$("t-set");
@@ -782,9 +873,6 @@ function renderSet(){
    '<label>โทเคนอ่านอย่างเดียว (ขอจากผู้ดูแล)</label><input type="password" id="c-token" autocapitalize="off" autocomplete="off" value="'+esc(cfg.token)+'" placeholder="github_pat_...">'+
    '<div class="hint">โทเคนจะถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ใช้อ่านไฟล์ข้อมูลอย่างเดียว</div>'+
    '<div style="margin-top:12px"><button class="btn btn-p" id="c-save">บันทึกการตั้งค่า</button></div></div>'+
-   '<div class="card"><div class="nm">ลิงก์หน้าสต๊อกการ์ด</div>'+
-   '<label>URL ของหน้าสต๊อกการ์ด (จากน้องใบเตย)</label><input type="text" id="c-scurl" autocapitalize="off" autocomplete="off" value="'+esc(getScUrl())+'" placeholder="https://...">'+
-   '<div class="hint">ใช้กับแท็บ “สต๊อกการ์ด” เก็บไว้ในเครื่องนี้เท่านั้น ต้องขึ้นต้นด้วย https://</div></div>'+
    '<div class="card"><div class="nm">ลิงก์ตั้งค่าให้เพื่อนร่วมงาน</div><div class="hint">'+
    'ถ้าโทเคนหายหรือเปลี่ยนเครื่อง แตะลิงก์นี้ครั้งเดียวก็ตั้งค่าให้เอง ไม่ต้องพิมพ์โทเคน (ส่วนโทเคนอยู่หลังเครื่องหมาย # จึงไม่ถูกส่งไปที่เซิร์ฟเวอร์ และจะถูกเอาออกจากแถบที่อยู่ทันทีหลังเปิด) '+
    '<b>ลิงก์นี้มีโทเคนอยู่ข้างใน ส่งให้เฉพาะคนในหน่วยงาน และใช้กับโทเคนอ่านอย่างเดียวเท่านั้น</b></div>'+
@@ -803,9 +891,6 @@ function renderSet(){
   };
   $("c-save").onclick=function(){
     ["owner","repo","branch","path","token"].forEach(function(k){ var v=$("c-"+k).value.trim(); cfg[k]=v||(DEFAULT_CFG[k]); if(k==="token") cfg.token=v; });
-    var su=($("c-scurl").value||"").trim();
-    if(su && !safeUrl(su)){ showMsg("err","ลิงก์หน้าสต๊อกการ์ดต้องขึ้นต้นด้วย http:// หรือ https://"); return; }
-    setScUrl(su); renderSc();
     saveCfg(); showMsg("info","บันทึกการตั้งค่าแล้ว"); checkCloud().then(fixHeader);
   };
 }
@@ -816,7 +901,7 @@ function renderAsOf(){
 }
 function setSnap(s){
   snap=s; drugs=buildDrugs(s.lots||[]); drugsNoExp=null; buildIndex(s);
-  renderAsOf(); renderLots(); renderPo(); renderPend(); renderSet();
+  renderAsOf(); renderLots(); renderPo(); renderPend(); renderSc(); renderSet();
 }
 
 /* ===================== อัปเดตจากคลาวด์ ===================== */
